@@ -221,6 +221,7 @@ export default function ProductDetail() {
   };
 
   const handleEndAuction = async () => {
+    if (!product || !user || user.id !== product.seller_id) return;
     setEndAuctionModalVisible(false);
     try {
       const { data: allBids } = await supabase
@@ -255,6 +256,7 @@ export default function ProductDetail() {
   };
 
   const handleRelist = async () => {
+    if (!product || !user || user.id !== product.seller_id) return;
     const minutes = parseInt(relistDuration, 10);
     if (isNaN(minutes) || minutes <= 0) return;
     setRelistSubmitting(true);
@@ -277,6 +279,7 @@ export default function ProductDetail() {
   };
 
   const handleDelist = async () => {
+    if (!product || !user || user.id !== product.seller_id) return;
     try {
       await supabase.from('products').delete().eq('id', id);
       router.back();

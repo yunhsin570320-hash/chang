@@ -112,7 +112,8 @@ export default function DeliveryPage() {
   };
 
   const updateDeliveryStatus = async (newStatus: DeliveryInfo['status']) => {
-    if (!delivery) return;
+    if (!delivery || !user || !product) return;
+    if (user.id !== product.seller_id) return;
 
     setUpdating(true);
     try {

@@ -186,6 +186,7 @@ export default function AdminPage() {
 
   const executeAction = async () => {
     if (!actionTarget || !selectedAction || !actionReason.trim() || !user) return;
+    if (!isAdmin) return;
     setActioning(true);
     try {
       const logEntry: any = {

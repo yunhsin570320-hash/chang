@@ -367,8 +367,8 @@ export default function AuthPage() {
 
         <View style={styles.demoAccounts}>
           <Text style={styles.demoTitle}>測試帳號</Text>
-          <Text style={styles.demoText}>賣家: seller1@test.com / demo123</Text>
-          <Text style={styles.demoText}>買家: buyer1@test.com / demo123</Text>
+          <Text style={styles.demoText}>賣家: seller1@test.com</Text>
+          <Text style={styles.demoText}>買家: buyer1@test.com</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

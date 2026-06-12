@@ -25,6 +25,7 @@ interface ProductWithCount extends Product {
   bid_count?: number;
   winner_name?: string;
   delivery_status?: string | null;
+  is_archived?: boolean;
 }
 
 interface ArchivedRecord {
@@ -393,7 +394,8 @@ export default function SellerPage() {
   };
 
   const confirmDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !user) return;
+    if (user.id !== deleteTarget.seller_id) return;
     setDeleteSubmitting(true);
     try {
       const { error } = await supabase

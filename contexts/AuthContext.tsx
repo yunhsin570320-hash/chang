@@ -4,6 +4,19 @@ import { Profile, supabase } from '../lib/supabase';
 
 type UserRole = 'buyer' | 'seller';
 
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function isHashed(value: string): boolean {
+  return /^[0-9a-f]{64}$/.test(value);
+}
+
 interface AuthContextType {
   user: Profile | null;
   currentRole: UserRole;
@@ -111,8 +124,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (fetchError) return { error: '登入失敗，請稍後再試' };
       if (!profiles || profiles.length === 0) return { error: '郵箱或密碼錯誤' };
 
-      const matchedUser = profiles.find(p => p.password_hash === password);
+      const hashed = await hashPassword(password);
+      const matchedUser = profiles.find(p => {
+        const stored = p.password_hash || '';
+        return isHashed(stored) ? stored === hashed : stored === password;
+      });
       if (!matchedUser) return { error: '郵箱或密碼錯誤' };
+
+      // Upgrade legacy plaintext password to hash (fire-and-forget)
+      if (matchedUser.password_hash && !isHashed(matchedUser.password_hash)) {
+        supabase.from('profiles').update({ password_hash: hashed }).eq('id', matchedUser.id).then(() => {});
+      }
 
       if (matchedUser.is_blocked) {
         return { error: `此帳號已被停用。原因：${matchedUser.blocked_reason || '違反使用規範'}` };
@@ -163,12 +185,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (existingPhone) return { error: '此手機號碼已被其他帳戶使用' };
       }
 
+      const hashedPassword = await hashPassword(password);
       const { data, error } = await supabase
         .from('profiles')
         .insert({
           name: name.trim(),
           email: email.toLowerCase().trim(),
-          password_hash: password,
+          password_hash: hashedPassword,
           is_buyer: isBuyer,
           is_seller: isSeller,
           role: isSeller ? 'seller' : 'buyer',
