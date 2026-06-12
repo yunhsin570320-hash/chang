@@ -235,13 +235,30 @@ export default function AdminPage() {
         }
       } else if (actionTarget.type === 'report') {
         const newStatus = selectedAction === 'resolve_report' ? 'resolved' : 'dismissed';
+        const report = reports.find(r => r.id === actionTarget.id);
         await supabase.from('reports').update({
           status: newStatus,
           resolved_by: user.id,
           resolved_at: new Date().toISOString(),
           admin_note: actionReason.trim(),
         }).eq('id', actionTarget.id);
-        logEntry.target_user_id = reports.find(r => r.id === actionTarget.id)?.reported_user_id || null;
+        logEntry.target_user_id = report?.reported_user_id || null;
+
+        // Notify the reporter of the outcome
+        if (report?.reporter_id) {
+          const isResolved = newStatus === 'resolved';
+          const productName = (report as any).product?.name || '該商品';
+          await supabase.from('notifications').insert({
+            user_id: report.reporter_id,
+            type: 'auction_ended',
+            title: isResolved ? '您的檢舉已受理' : '您的檢舉已審閱',
+            message: isResolved
+              ? `您對「${productName}」的檢舉已由管理員受理並採取行動。管理員備註：${actionReason.trim()}`
+              : `您對「${productName}」的檢舉經審閱後暫不採取行動。管理員備註：${actionReason.trim()}`,
+            product_id: report.product_id || null,
+            is_read: false,
+          });
+        }
       }
 
       await supabase.from('admin_actions').insert(logEntry);
