@@ -179,6 +179,10 @@ export default function ProductDetail() {
       return;
     }
 
+    if (!product || product.status !== 'active') {
+      return;
+    }
+
     if (user.is_blocked) {
       return;
     }
