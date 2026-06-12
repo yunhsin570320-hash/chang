@@ -158,8 +158,12 @@ export default function ProductDetail() {
         is_read: false,
       });
 
-      setDirectBuySuccess(true);
-      fetchData();
+      if (isSoldOut) {
+        router.replace(`/delivery/${id}`);
+      } else {
+        setDirectBuySuccess(true);
+        fetchData();
+      }
     } catch (error) {
       setDirectBuyError('購買失敗，請重試');
       console.warn(error);

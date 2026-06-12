@@ -10,7 +10,7 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { Truck, MapPin, Phone, User, Package, Check, ArrowLeft, MessageSquare } from 'lucide-react-native';
+import { Truck, MapPin, Phone, User, Package, Check, ArrowLeft, MessageSquare, Mail, CreditCard, Banknote } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { supabase, Product, Profile } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -141,6 +141,10 @@ export default function DeliveryPage() {
           `【${product.name}】`,
           `得標者：${winner.name}`,
           `聯絡電話：${winner.phone || '未提供'}`,
+          `Email：${winner.email || '未提供'}`,
+          winner.payment_method ? `付款方式：${winner.payment_method}` : null,
+          winner.bank_account ? `銀行帳號：${winner.bank_account}` : null,
+          `交貨地址：${winner.shipping_address || '未提供'}`,
           `得標金額：NT$ ${(product.winning_amount || 0).toLocaleString()}`,
           trackingNumber.trim() ? `物流單號：${trackingNumber.trim()}` : null,
           notes.trim() ? `備註：${notes.trim()}` : null,
@@ -259,6 +263,30 @@ export default function DeliveryPage() {
               <Phone size={20} color="#00D4AA" />
               <Text style={styles.infoLabel}>電話</Text>
               <Text style={styles.infoValue}>{winner.phone || '未提供'}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Mail size={20} color="#00D4AA" />
+              <Text style={styles.infoLabel}>Email</Text>
+              <Text style={styles.infoValue}>{winner.email || '未提供'}</Text>
+            </View>
+            {winner.payment_method ? (
+              <View style={styles.infoRow}>
+                <CreditCard size={20} color="#00D4AA" />
+                <Text style={styles.infoLabel}>付款方式</Text>
+                <Text style={styles.infoValue}>{winner.payment_method}</Text>
+              </View>
+            ) : null}
+            {winner.bank_account ? (
+              <View style={styles.infoRow}>
+                <Banknote size={20} color="#00D4AA" />
+                <Text style={styles.infoLabel}>銀行帳號</Text>
+                <Text style={styles.infoValue}>{winner.bank_account}</Text>
+              </View>
+            ) : null}
+            <View style={[styles.infoRow, { alignItems: 'flex-start' }]}>
+              <MapPin size={20} color="#00D4AA" style={{ marginTop: 2 }} />
+              <Text style={styles.infoLabel}>交貨地址</Text>
+              <Text style={[styles.infoValue, { flexWrap: 'wrap' }]}>{winner.shipping_address || '未提供'}</Text>
             </View>
           </View>
         </View>
