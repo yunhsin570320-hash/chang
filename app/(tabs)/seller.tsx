@@ -25,6 +25,9 @@ interface ProductWithCount extends Product {
   bid_count?: number;
   winner_name?: string;
   delivery_status?: string | null;
+  delivery_id?: string | null;
+  pending_delivery_id?: string | null;
+  pending_delivery_count?: number;
   is_archived?: boolean;
 }
 
@@ -165,25 +168,52 @@ export default function SellerPage() {
         });
       }
 
-      // Fetch delivery status for all ended products with a winner
+      // Fetch delivery status and ID for ended auction products with a winner
       const endedWithWinnerIds = (productData || [])
-        .filter(p => p.status === 'ended' && p.winner_id)
+        .filter(p => p.status === 'ended' && p.winner_id && !p.is_direct_buy)
         .map(p => p.id);
 
       const deliveryStatusMap = new Map<string, string>();
+      const deliveryIdMap = new Map<string, string>();
       const completedProductIds = new Set<string>();
 
       if (endedWithWinnerIds.length > 0) {
         const { data: deliveryRows } = await supabase
           .from('deliveries')
-          .select('product_id, status')
-          .in('product_id', endedWithWinnerIds);
+          .select('id, product_id, status')
+          .in('product_id', endedWithWinnerIds)
+          .eq('is_direct_buy', false);
 
         (deliveryRows || []).forEach(d => {
           deliveryStatusMap.set(d.product_id, d.status);
+          deliveryIdMap.set(d.product_id, d.id);
           if (d.status === 'completed') {
             completedProductIds.add(d.product_id);
           }
+        });
+      }
+
+      // Fetch pending direct buy deliveries (one per purchase, may be many per product)
+      const directBuyIds = (productData || [])
+        .filter(p => p.is_direct_buy && !p.is_archived)
+        .map(p => p.id);
+
+      const pendingDeliveryIdMap = new Map<string, string>();
+      const pendingDeliveryCountMap = new Map<string, number>();
+
+      if (directBuyIds.length > 0) {
+        const { data: pendingDeliveries } = await supabase
+          .from('deliveries')
+          .select('id, product_id, status, created_at')
+          .in('product_id', directBuyIds)
+          .in('status', ['pending', 'shipped', 'delivered'])
+          .order('created_at', { ascending: true });
+
+        (pendingDeliveries || []).forEach(d => {
+          if (!pendingDeliveryIdMap.has(d.product_id)) {
+            pendingDeliveryIdMap.set(d.product_id, d.id);
+          }
+          pendingDeliveryCountMap.set(d.product_id, (pendingDeliveryCountMap.get(d.product_id) || 0) + 1);
         });
       }
 
@@ -208,6 +238,9 @@ export default function SellerPage() {
             bid_count: bidCountMap.get(p.id) || 0,
             winner_name: p.winner_id ? winnerMap[p.winner_id] : undefined,
             delivery_status: deliveryStatusMap.get(p.id) ?? null,
+            delivery_id: deliveryIdMap.get(p.id) ?? null,
+            pending_delivery_id: pendingDeliveryIdMap.get(p.id) ?? null,
+            pending_delivery_count: pendingDeliveryCountMap.get(p.id) ?? 0,
           }));
           setProducts(productsWithBids);
           // Skip the normal setProducts below by jumping to archive fetch
@@ -221,6 +254,9 @@ export default function SellerPage() {
         bid_count: bidCountMap.get(p.id) || 0,
         winner_name: p.winner_id ? winnerMap[p.winner_id] : undefined,
         delivery_status: deliveryStatusMap.get(p.id) ?? null,
+        delivery_id: deliveryIdMap.get(p.id) ?? null,
+        pending_delivery_id: pendingDeliveryIdMap.get(p.id) ?? null,
+        pending_delivery_count: pendingDeliveryCountMap.get(p.id) ?? 0,
       }));
 
       setProducts(productsWithBids);
@@ -412,10 +448,12 @@ export default function SellerPage() {
     }
   };
 
-  const handleDelivery = (product: Product) => {
+  const handleDelivery = (product: ProductWithCount, deliveryId?: string) => {
+    const target = deliveryId || product.delivery_id || product.pending_delivery_id;
+    if (!target) return;
     router.push({
       pathname: '/delivery/[id]' as any,
-      params: { id: product.id },
+      params: { id: target },
     });
   };
 
@@ -522,9 +560,10 @@ export default function SellerPage() {
   const activeAuctionProducts = products.filter(p => p.status === 'active' && !p.is_direct_buy);
   const activeDirectProducts = products.filter(p => p.status === 'active' && p.is_direct_buy);
   const endedProducts = products.filter(p => p.status === 'ended');
-  // Sold = ended with winner, delivery NOT completed, NOT archived
+  // Sold = auction ended with winner, delivery NOT completed, NOT archived
   const soldProducts = endedProducts.filter(
-    p => p.winning_amount && p.winning_amount > 0
+    p => !p.is_direct_buy
+      && p.winning_amount && p.winning_amount > 0
       && p.delivery_status !== 'completed'
       && !p.is_archived
   );
@@ -838,6 +877,17 @@ export default function SellerPage() {
               ) : null}
 
               <View style={styles.productFooter}>
+                {(item.pending_delivery_count ?? 0) > 0 && (
+                  <TouchableOpacity
+                    style={styles.deliveryButton}
+                    onPress={() => handleDelivery(item)}
+                  >
+                    <Truck size={18} color="#fff" />
+                    <Text style={styles.deliveryButtonText}>
+                      待出貨 {item.pending_delivery_count} 筆
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={styles.deleteButton}
                   onPress={() => handleDelete(item)}

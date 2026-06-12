@@ -149,6 +149,22 @@ export default function ProductDetail() {
 
       if (error) throw error;
 
+      // Create delivery record immediately for this purchase
+      const { data: newDelivery } = await supabase
+        .from('deliveries')
+        .insert({
+          product_id: id,
+          winner_id: user.id,
+          seller_id: product.seller_id,
+          status: 'pending',
+          quantity: qty,
+          purchase_amount: totalAmount,
+          is_direct_buy: true,
+        })
+        .select('id')
+        .single();
+
+      // Notify buyer
       await supabase.from('notifications').insert({
         user_id: user.id,
         product_id: id,
@@ -158,8 +174,18 @@ export default function ProductDetail() {
         is_read: false,
       });
 
-      if (isSoldOut) {
-        router.replace(`/delivery/${id}`);
+      // Notify seller to ship
+      await supabase.from('notifications').insert({
+        user_id: product.seller_id,
+        product_id: id,
+        type: 'new_bid',
+        title: '新訂單！請出貨',
+        message: `買家已直購「${product.name}」× ${qty} 件，金額 NT$ ${totalAmount.toLocaleString()}，請盡快安排出貨。`,
+        is_read: false,
+      });
+
+      if (newDelivery?.id) {
+        router.replace(`/delivery/${newDelivery.id}`);
       } else {
         setDirectBuySuccess(true);
         fetchData();

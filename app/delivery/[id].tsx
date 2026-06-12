@@ -10,7 +10,7 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { Truck, MapPin, Phone, User, Package, Check, ArrowLeft, MessageSquare, Mail, CreditCard, Banknote } from 'lucide-react-native';
+import { Truck, MapPin, Phone, User, Package, Check, Mail, CreditCard, Banknote, ShoppingCart } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { supabase, Product, Profile } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,85 +25,55 @@ interface DeliveryInfo {
   shipping_address?: string;
   contact_phone?: string;
   notes?: string;
+  quantity: number;
+  purchase_amount?: number;
+  is_direct_buy: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export default function DeliveryPage() {
+  // `id` is the delivery UUID (deliveries.id), not the product id
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<Product | null>(null);
-  const [winner, setWinner] = useState<Profile | null>(null);
+  const [buyer, setBuyer] = useState<Profile | null>(null);
   const [delivery, setDelivery] = useState<DeliveryInfo | null>(null);
   const [trackingNumber, setTrackingNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
-    if (id) {
-      fetchDeliveryData();
-    }
+    if (id) fetchDeliveryData();
   }, [id]);
 
   const fetchDeliveryData = async () => {
     try {
-      // Fetch product
-      const { data: productData } = await supabase
-        .from('products')
+      const { data: deliveryData } = await supabase
+        .from('deliveries')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (productData) {
-        setProduct(productData);
-
-        // Fetch winner info
-        if (productData.winner_id) {
-          const { data: winnerData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', productData.winner_id)
-            .single();
-
-          if (winnerData) {
-            setWinner(winnerData);
-          }
-        }
+      if (!deliveryData) {
+        setLoading(false);
+        return;
       }
 
-      // Fetch or create delivery record
-      let { data: deliveryData } = await supabase
-        .from('deliveries')
-        .select('*')
-        .eq('product_id', id)
-        .single();
+      setDelivery(deliveryData as DeliveryInfo);
+      setTrackingNumber(deliveryData.tracking_number || '');
+      setNotes(deliveryData.notes || '');
 
-      if (!deliveryData && productData) {
-        // Create delivery record
-        const { data: newDelivery, error } = await supabase
-          .from('deliveries')
-          .insert({
-            product_id: id,
-            winner_id: productData.winner_id,
-            seller_id: productData.seller_id,
-            status: 'pending',
-          })
-          .select()
-          .single();
+      const [productResult, buyerResult] = await Promise.all([
+        supabase.from('products').select('*').eq('id', deliveryData.product_id).single(),
+        supabase.from('profiles').select('*').eq('id', deliveryData.winner_id).single(),
+      ]);
 
-        if (!error && newDelivery) {
-          deliveryData = newDelivery;
-        }
-      }
-
-      if (deliveryData) {
-        setDelivery(deliveryData);
-        setTrackingNumber(deliveryData.tracking_number || '');
-        setNotes(deliveryData.notes || '');
-      }
+      if (productResult.data) setProduct(productResult.data);
+      if (buyerResult.data) setBuyer(buyerResult.data);
     } catch (error) {
       console.error('Error fetching delivery data:', error);
     } finally {
@@ -111,41 +81,37 @@ export default function DeliveryPage() {
     }
   };
 
+  const isSeller = user?.id === delivery?.seller_id;
+
   const updateDeliveryStatus = async (newStatus: DeliveryInfo['status']) => {
-    if (!delivery || !user || !product) return;
-    if (user.id !== product.seller_id) return;
+    if (!delivery || !user || !product || !isSeller) return;
 
     setUpdating(true);
     try {
       const now = new Date().toISOString();
-      const updateData: any = {
-        status: newStatus,
-        updated_at: now,
-      };
+      const updateData: any = { status: newStatus, updated_at: now };
 
-      if (trackingNumber.trim()) {
-        updateData.tracking_number = trackingNumber.trim();
-      }
+      if (trackingNumber.trim()) updateData.tracking_number = trackingNumber.trim();
+      if (notes.trim()) updateData.notes = notes.trim();
 
-      if (notes.trim()) {
-        updateData.notes = notes.trim();
-      }
-
-      // On completion: generate summary text and archive the product
-      if (newStatus === 'completed' && product && winner) {
+      if (newStatus === 'completed' && buyer) {
         const completedAt = new Date().toLocaleString('zh-TW', {
           year: 'numeric', month: '2-digit', day: '2-digit',
           hour: '2-digit', minute: '2-digit',
         });
+        const amount = delivery.is_direct_buy
+          ? (delivery.purchase_amount || 0)
+          : (product.winning_amount || 0);
         const summary = [
           `【${product.name}】`,
-          `得標者：${winner.name}`,
-          `聯絡電話：${winner.phone || '未提供'}`,
-          `Email：${winner.email || '未提供'}`,
-          winner.payment_method ? `付款方式：${winner.payment_method}` : null,
-          winner.bank_account ? `銀行帳號：${winner.bank_account}` : null,
-          `交貨地址：${winner.shipping_address || '未提供'}`,
-          `得標金額：NT$ ${(product.winning_amount || 0).toLocaleString()}`,
+          delivery.is_direct_buy ? `購買數量：${delivery.quantity} 件` : null,
+          `買家：${buyer.name}`,
+          `聯絡電話：${buyer.phone || '未提供'}`,
+          `Email：${buyer.email || '未提供'}`,
+          buyer.payment_method ? `付款方式：${buyer.payment_method}` : null,
+          buyer.bank_account ? `銀行帳號：${buyer.bank_account}` : null,
+          `交貨地址：${buyer.shipping_address || '未提供'}`,
+          `金額：NT$ ${amount.toLocaleString()}`,
           trackingNumber.trim() ? `物流單號：${trackingNumber.trim()}` : null,
           notes.trim() ? `備註：${notes.trim()}` : null,
           `完成時間：${completedAt}`,
@@ -154,8 +120,20 @@ export default function DeliveryPage() {
         updateData.completed_summary = summary;
         updateData.completed_at = now;
 
-        // Archive the product to remove it from main active lists
-        await supabase.from('products').update({ is_archived: true }).eq('id', product.id);
+        // Only archive the product for auction completions (not direct buy with remaining stock)
+        if (!delivery.is_direct_buy) {
+          await supabase.from('products').update({ is_archived: true }).eq('id', product.id);
+        }
+
+        // Notify buyer
+        await supabase.from('notifications').insert({
+          user_id: delivery.winner_id,
+          product_id: product.id,
+          type: 'auction_ended',
+          title: '交付完成',
+          message: `「${product.name}」已完成交付，感謝您的購買！`,
+          is_read: false,
+        });
       }
 
       const { error } = await supabase
@@ -164,13 +142,14 @@ export default function DeliveryPage() {
         .eq('id', delivery.id);
 
       if (error) throw error;
-
       setDelivery({ ...delivery, ...updateData });
 
       if (newStatus === 'completed') {
         Alert.alert(
           '交付完成',
-          '此商品已完成交付並封存。\n您可在賣家後台的「已完成」紀錄中查閱。',
+          delivery.is_direct_buy
+            ? '此筆訂單已完成交付。'
+            : '此商品已完成交付並封存。\n您可在賣家後台的「已完成」紀錄中查閱。',
           [{ text: '返回後台', onPress: () => router.back() }]
         );
       } else {
@@ -211,7 +190,7 @@ export default function DeliveryPage() {
     );
   }
 
-  if (!product || !winner) {
+  if (!delivery || !product || !buyer) {
     return (
       <View style={styles.errorContainer}>
         <Package size={48} color="#FF6B6B" />
@@ -222,6 +201,10 @@ export default function DeliveryPage() {
       </View>
     );
   }
+
+  const displayAmount = delivery.is_direct_buy
+    ? (delivery.purchase_amount || 0)
+    : (product.winning_amount || 0);
 
   return (
     <>
@@ -242,51 +225,56 @@ export default function DeliveryPage() {
             <Image source={{ uri: product.image_url }} style={styles.productImage} />
             <View style={styles.productInfo}>
               <Text style={styles.productName}>{product.name}</Text>
-              <Text style={styles.productDesc}>{product.description || '無描述'}</Text>
+              {delivery.is_direct_buy && (
+                <View style={styles.qtyBadge}>
+                  <ShoppingCart size={14} color="#00D4AA" />
+                  <Text style={styles.qtyText}>直購 × {delivery.quantity} 件</Text>
+                </View>
+              )}
               <Text style={styles.productPrice}>
-                得標金額: NT$ {(product.winning_amount || 0).toLocaleString()}
+                {delivery.is_direct_buy ? '購買金額' : '得標金額'}: NT$ {displayAmount.toLocaleString()}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Winner Info */}
+        {/* Buyer Info */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>得標者資訊</Text>
+          <Text style={styles.sectionTitle}>{delivery.is_direct_buy ? '買家資訊' : '得標者資訊'}</Text>
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
               <User size={20} color="#00D4AA" />
               <Text style={styles.infoLabel}>姓名</Text>
-              <Text style={styles.infoValue}>{winner.name}</Text>
+              <Text style={styles.infoValue}>{buyer.name}</Text>
             </View>
             <View style={styles.infoRow}>
               <Phone size={20} color="#00D4AA" />
               <Text style={styles.infoLabel}>電話</Text>
-              <Text style={styles.infoValue}>{winner.phone || '未提供'}</Text>
+              <Text style={styles.infoValue}>{buyer.phone || '未提供'}</Text>
             </View>
             <View style={styles.infoRow}>
               <Mail size={20} color="#00D4AA" />
               <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{winner.email || '未提供'}</Text>
+              <Text style={styles.infoValue}>{buyer.email || '未提供'}</Text>
             </View>
-            {winner.payment_method ? (
+            {buyer.payment_method ? (
               <View style={styles.infoRow}>
                 <CreditCard size={20} color="#00D4AA" />
                 <Text style={styles.infoLabel}>付款方式</Text>
-                <Text style={styles.infoValue}>{winner.payment_method}</Text>
+                <Text style={styles.infoValue}>{buyer.payment_method}</Text>
               </View>
             ) : null}
-            {winner.bank_account ? (
+            {buyer.bank_account ? (
               <View style={styles.infoRow}>
                 <Banknote size={20} color="#00D4AA" />
                 <Text style={styles.infoLabel}>銀行帳號</Text>
-                <Text style={styles.infoValue}>{winner.bank_account}</Text>
+                <Text style={styles.infoValue}>{buyer.bank_account}</Text>
               </View>
             ) : null}
             <View style={[styles.infoRow, { alignItems: 'flex-start' }]}>
               <MapPin size={20} color="#00D4AA" style={{ marginTop: 2 }} />
               <Text style={styles.infoLabel}>交貨地址</Text>
-              <Text style={[styles.infoValue, { flexWrap: 'wrap' }]}>{winner.shipping_address || '未提供'}</Text>
+              <Text style={[styles.infoValue, { flexWrap: 'wrap' }]}>{buyer.shipping_address || '未提供'}</Text>
             </View>
           </View>
         </View>
@@ -295,43 +283,34 @@ export default function DeliveryPage() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>交付狀態</Text>
           <View style={styles.statusContainer}>
-            <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(delivery?.status || 'pending')}20` }]}>
-              <View style={[styles.statusDot, { backgroundColor: getStatusColor(delivery?.status || 'pending') }]} />
-              <Text style={[styles.statusText, { color: getStatusColor(delivery?.status || 'pending') }]}>
-                {getStatusText(delivery?.status || 'pending')}
+            <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(delivery.status)}20` }]}>
+              <View style={[styles.statusDot, { backgroundColor: getStatusColor(delivery.status) }]} />
+              <Text style={[styles.statusText, { color: getStatusColor(delivery.status) }]}>
+                {getStatusText(delivery.status)}
               </Text>
             </View>
           </View>
-
-          {/* Progress Steps */}
           <View style={styles.progressContainer}>
-            {['pending', 'shipped', 'delivered', 'completed'].map((step, index) => {
+            {(['pending', 'shipped', 'delivered', 'completed'] as const).map((step, index) => {
               const statusOrder = ['pending', 'shipped', 'delivered', 'completed'];
-              const currentIndex = statusOrder.indexOf(delivery?.status || 'pending');
+              const currentIndex = statusOrder.indexOf(delivery.status);
               const stepIndex = statusOrder.indexOf(step);
               const isCompleted = stepIndex <= currentIndex;
               const isCurrent = stepIndex === currentIndex;
-
               return (
                 <View key={step} style={styles.progressStep}>
                   <View style={[
                     styles.progressCircle,
                     isCompleted && styles.progressCircleActive,
-                    isCurrent && styles.progressCircleCurrent
+                    isCurrent && styles.progressCircleCurrent,
                   ]}>
                     {isCompleted && <Check size={16} color="#000" />}
                   </View>
-                  <Text style={[
-                    styles.progressLabel,
-                    isCompleted && styles.progressLabelActive
-                  ]}>
-                    {getStatusText(step as any)}
+                  <Text style={[styles.progressLabel, isCompleted && styles.progressLabelActive]}>
+                    {getStatusText(step)}
                   </Text>
                   {index < 3 && (
-                    <View style={[
-                      styles.progressLine,
-                      stepIndex < currentIndex && styles.progressLineActive
-                    ]} />
+                    <View style={[styles.progressLine, stepIndex < currentIndex && styles.progressLineActive]} />
                   )}
                 </View>
               );
@@ -339,93 +318,88 @@ export default function DeliveryPage() {
           </View>
         </View>
 
-        {/* Tracking Number */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>物流資訊</Text>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>物流單號</Text>
-            <TextInput
-              style={styles.input}
-              value={trackingNumber}
-              onChangeText={setTrackingNumber}
-              placeholder="輸入物流單號"
-              placeholderTextColor="#444"
-            />
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>備註</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="輸入備註（例如：配送時間、特殊指示等）"
-              placeholderTextColor="#444"
-              multiline
-              numberOfLines={3}
-            />
-          </View>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.section}>
-          {delivery?.status === 'pending' && (
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => updateDeliveryStatus('shipped')}
-              disabled={updating}
-            >
-              {updating ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <>
-                  <Truck size={20} color="#000" />
-                  <Text style={styles.actionButtonText}>確認出貨</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {delivery?.status === 'shipped' && (
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => updateDeliveryStatus('delivered')}
-              disabled={updating}
-            >
-              {updating ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <>
-                  <Package size={20} color="#000" />
-                  <Text style={styles.actionButtonText}>確認送達</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {delivery?.status === 'delivered' && (
-            <TouchableOpacity
-              style={styles.actionButtonSuccess}
-              onPress={() => updateDeliveryStatus('completed')}
-              disabled={updating}
-            >
-              {updating ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <>
-                  <Check size={20} color="#000" />
-                  <Text style={styles.actionButtonText}>完成交付</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {delivery?.status === 'completed' && (
-            <View style={styles.completedContainer}>
-              <Check size={48} color="#10B981" />
-              <Text style={styles.completedText}>交付已完成</Text>
+        {/* Tracking / Notes — seller only */}
+        {isSeller && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>物流資訊</Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>物流單號</Text>
+              <TextInput
+                style={styles.input}
+                value={trackingNumber}
+                onChangeText={setTrackingNumber}
+                placeholder="輸入物流單號"
+                placeholderTextColor="#444"
+              />
             </View>
-          )}
-        </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>備註</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="輸入備註（例如：配送時間、特殊指示等）"
+                placeholderTextColor="#444"
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* Tracking number display for buyer */}
+        {!isSeller && delivery.tracking_number && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>物流資訊</Text>
+            <View style={styles.infoCard}>
+              <View style={styles.infoRow}>
+                <Truck size={20} color="#00D4AA" />
+                <Text style={styles.infoLabel}>物流單號</Text>
+                <Text style={styles.infoValue}>{delivery.tracking_number}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Action Buttons — seller only */}
+        {isSeller && (
+          <View style={styles.section}>
+            {delivery.status === 'pending' && (
+              <TouchableOpacity style={styles.actionButton} onPress={() => updateDeliveryStatus('shipped')} disabled={updating}>
+                {updating ? <ActivityIndicator color="#000" /> : (
+                  <><Truck size={20} color="#000" /><Text style={styles.actionButtonText}>確認出貨</Text></>
+                )}
+              </TouchableOpacity>
+            )}
+            {delivery.status === 'shipped' && (
+              <TouchableOpacity style={styles.actionButton} onPress={() => updateDeliveryStatus('delivered')} disabled={updating}>
+                {updating ? <ActivityIndicator color="#000" /> : (
+                  <><Package size={20} color="#000" /><Text style={styles.actionButtonText}>確認送達</Text></>
+                )}
+              </TouchableOpacity>
+            )}
+            {delivery.status === 'delivered' && (
+              <TouchableOpacity style={styles.actionButtonSuccess} onPress={() => updateDeliveryStatus('completed')} disabled={updating}>
+                {updating ? <ActivityIndicator color="#000" /> : (
+                  <><Check size={20} color="#000" /><Text style={styles.actionButtonText}>完成交付</Text></>
+                )}
+              </TouchableOpacity>
+            )}
+            {delivery.status === 'completed' && (
+              <View style={styles.completedContainer}>
+                <Check size={48} color="#10B981" />
+                <Text style={styles.completedText}>交付已完成</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {!isSeller && delivery.status === 'completed' && (
+          <View style={[styles.section, { alignItems: 'center', paddingBottom: 40 }]}>
+            <Check size={48} color="#10B981" />
+            <Text style={styles.completedText}>交付已完成，感謝您的購買！</Text>
+          </View>
+        )}
       </ScrollView>
     </>
   );
@@ -450,10 +424,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0, 212, 170, 0.2)',
   },
   productImage: { width: 80, height: 80, borderRadius: 8, marginRight: 12 },
-  productInfo: { flex: 1 },
-  productName: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 6 },
-  productDesc: { fontSize: 13, color: '#888', marginBottom: 8 },
+  productInfo: { flex: 1, gap: 6 },
+  productName: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  productDesc: { fontSize: 13, color: '#888' },
   productPrice: { fontSize: 16, fontWeight: '700', color: '#00D4AA' },
+  qtyBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,212,170,0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, alignSelf: 'flex-start' },
+  qtyText: { fontSize: 13, color: '#00D4AA', fontWeight: '600' },
   infoCard: {
     backgroundColor: '#1A1A2E',
     borderRadius: 12,
@@ -463,73 +439,42 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  infoLabel: { color: '#888', fontSize: 14, width: 50 },
+  infoLabel: { color: '#888', fontSize: 14, width: 60 },
   infoValue: { color: '#fff', fontSize: 14, fontWeight: '500', flex: 1 },
   statusContainer: { alignItems: 'center', marginBottom: 20 },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   statusText: { fontSize: 16, fontWeight: '700' },
   progressContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingHorizontal: 16 },
   progressStep: { alignItems: 'center', flex: 1, position: 'relative' },
   progressCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 32, height: 32, borderRadius: 16,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 8,
   },
   progressCircleActive: { backgroundColor: '#00D4AA' },
   progressCircleCurrent: { borderWidth: 3, borderColor: '#00D4AA', backgroundColor: '#00D4AA' },
   progressLabel: { fontSize: 12, color: '#666', textAlign: 'center' },
   progressLabelActive: { color: '#fff', fontWeight: '600' },
   progressLine: {
-    position: 'absolute',
-    top: 16,
-    left: '50%',
-    right: '-50%',
-    height: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    zIndex: -1,
+    position: 'absolute', top: 16, left: '50%', right: '-50%',
+    height: 2, backgroundColor: 'rgba(255, 255, 255, 0.1)', zIndex: -1,
   },
   progressLineActive: { backgroundColor: '#00D4AA' },
   inputGroup: { gap: 8 },
   inputLabel: { fontSize: 13, color: '#888', fontWeight: '500' },
   input: {
-    backgroundColor: '#0D0D1A',
-    borderRadius: 8,
-    padding: 14,
-    color: '#fff',
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: '#0D0D1A', borderRadius: 8, padding: 14,
+    color: '#fff', fontSize: 16, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#00D4AA',
-    padding: 16,
-    borderRadius: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#00D4AA', padding: 16, borderRadius: 12,
   },
   actionButtonSuccess: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#10B981',
-    padding: 16,
-    borderRadius: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#10B981', padding: 16, borderRadius: 12,
   },
   actionButtonText: { color: '#000', fontSize: 16, fontWeight: '700' },
   completedContainer: { alignItems: 'center', paddingVertical: 40 },
