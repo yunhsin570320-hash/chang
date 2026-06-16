@@ -20,6 +20,7 @@ import { CountdownTimer } from '../../components/CountdownTimer';
 import { WebCamera } from '../../components/WebCamera';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 
 interface ProductWithCount extends Product {
   bid_count?: number;
@@ -457,24 +458,46 @@ export default function SellerPage() {
     });
   };
 
-  const openFilePicker = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = (e: any) => {
-      const file = e.target?.files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          if (ev.target?.result) {
-            setSelectedImage(ev.target.result as string);
-            setImagePickerVisible(false);
-          }
-        };
-        reader.readAsDataURL(file);
+  const openFilePicker = async () => {
+    if (Platform.OS === 'web') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e: any) => {
+        const file = e.target?.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            if (ev.target?.result) {
+              setSelectedImage(ev.target.result as string);
+              setImagePickerVisible(false);
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      input.click();
+    } else {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('需要權限', '請允許存取相簿以選擇圖片');
+        return;
       }
-    };
-    input.click();
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+        base64: true,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const dataUrl = asset.base64
+          ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
+          : asset.uri;
+        setSelectedImage(dataUrl);
+        setImagePickerVisible(false);
+      }
+    }
   };
 
   const pickImage = () => {
