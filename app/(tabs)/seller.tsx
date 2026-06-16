@@ -10,7 +10,6 @@ import {
   ScrollView,
   Image,
   Modal,
-  FlatList,
   Platform,
 } from 'react-native';
 import { Plus, Clock, Package, Camera, X, Check, Trash2, RotateCcw, Truck, Archive, ChevronDown, ChevronUp, Tag, ShoppingCart } from 'lucide-react-native';
@@ -40,16 +39,7 @@ interface ArchivedRecord {
   product_name: string;
 }
 
-const SAMPLE_IMAGES = [
-  { id: '1', url: 'https://images.pexels.com/photos/90946/pexels-photo-90946.jpeg?w=400', label: '電子產品' },
-  { id: '2', url: 'https://images.pexels.com/photos/303383/pexels-photo-303383.jpeg?w=400', label: '鍵盤' },
-  { id: '3', url: 'https://images.pexels.com/photos/934070/pexels-photo-934070.jpeg?w=400', label: '背包' },
-  { id: '4', url: 'https://images.pexels.com/photos/13894608/pexels-photo-13894608.jpeg?w=400', label: '音響' },
-  { id: '5', url: 'https://images.pexels.com/photos/225503/pexels-photo-225503.jpeg?w=400', label: '相機' },
-  { id: '6', url: 'https://images.pexels.com/photos/7860091/pexels-photo-7860091.jpeg?w=400', label: '珠寶' },
-  { id: '7', url: 'https://images.pexels.com/photos/19090/pexels-photo.jpeg?w=400', label: '手錶' },
-  { id: '8', url: 'https://images.pexels.com/photos/1591557/pexels-photo-1591557.jpeg?w=400', label: '藝術品' },
-];
+const INITIAL_IMAGE = 'https://images.pexels.com/photos/225503/pexels-photo-225503.jpeg?w=400';
 
 export default function SellerPage() {
   const router = useRouter();
@@ -69,7 +59,7 @@ export default function SellerPage() {
   const [duration, setDuration] = useState('60');
   const [reservePrice, setReservePrice] = useState('0');
   const [submitting, setSubmitting] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(SAMPLE_IMAGES[0].url);
+  const [selectedImage, setSelectedImage] = useState(INITIAL_IMAGE);
   const [imagePickerVisible, setImagePickerVisible] = useState(false);
   const [webCameraVisible, setWebCameraVisible] = useState(false);
   // Listing type
@@ -341,7 +331,7 @@ export default function SellerPage() {
       setReservePrice('0');
       setDirectPrice('');
       setStockQuantity('1');
-      setSelectedImage(SAMPLE_IMAGES[0].url);
+      setSelectedImage(INITIAL_IMAGE);
       fetchProducts();
     } catch (error) {
       console.error('Error adding product:', error);
@@ -536,34 +526,6 @@ export default function SellerPage() {
               <Text style={styles.pickButtonText}>從相簿選擇</Text>
             </TouchableOpacity>
           </View>
-
-          <Text style={styles.dividerText}>或選擇範例圖片</Text>
-
-          <FlatList
-            data={SAMPLE_IMAGES}
-            numColumns={2}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.imageOption,
-                  selectedImage === item.url && styles.imageOptionSelected
-                ]}
-                onPress={() => {
-                  setSelectedImage(item.url);
-                  setImagePickerVisible(false);
-                }}
-              >
-                <Image source={{ uri: item.url }} style={styles.previewImage} />
-                <Text style={styles.imageLabel}>{item.label}</Text>
-                {selectedImage === item.url && (
-                  <View style={styles.checkMark}>
-                    <Check size={20} color="#fff" />
-                  </View>
-                )}
-              </TouchableOpacity>
-            )}
-          />
         </View>
       </View>
     </Modal>
