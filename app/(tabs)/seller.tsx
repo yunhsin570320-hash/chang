@@ -439,13 +439,33 @@ export default function SellerPage() {
     }
   };
 
-  const handleDelivery = (product: ProductWithCount, deliveryId?: string) => {
-    const target = deliveryId || product.delivery_id || product.pending_delivery_id;
-    if (!target) return;
-    router.push({
-      pathname: '/delivery/[id]' as any,
-      params: { id: target },
-    });
+  const handleDelivery = async (product: ProductWithCount) => {
+    const target = product.delivery_id || product.pending_delivery_id;
+
+    if (target) {
+      router.push({ pathname: '/delivery/[id]' as any, params: { id: target } });
+      return;
+    }
+
+    // No delivery record yet for this auction product — create it now
+    if (!product.winner_id) return;
+    const { data: newDelivery, error } = await supabase
+      .from('deliveries')
+      .insert({
+        product_id: product.id,
+        winner_id: product.winner_id,
+        seller_id: product.seller_id,
+        status: 'pending',
+        is_direct_buy: false,
+      })
+      .select('id')
+      .single();
+
+    if (error || !newDelivery) {
+      Alert.alert('錯誤', '無法建立交付記錄，請重試');
+      return;
+    }
+    router.push({ pathname: '/delivery/[id]' as any, params: { id: newDelivery.id } });
   };
 
   const openFilePicker = async () => {
