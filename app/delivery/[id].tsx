@@ -45,6 +45,7 @@ export default function DeliveryPage() {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [updating, setUpdating] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) fetchDeliveryData();
@@ -52,13 +53,19 @@ export default function DeliveryPage() {
 
   const fetchDeliveryData = async () => {
     try {
-      const { data: deliveryData } = await supabase
+      const { data: deliveryData, error: deliveryError } = await supabase
         .from('deliveries')
         .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
+      if (deliveryError) {
+        setErrorMsg(`交付資料錯誤: ${deliveryError.message}`);
+        setLoading(false);
+        return;
+      }
       if (!deliveryData) {
+        setErrorMsg('找不到此交付記錄（ID 不存在）');
         setLoading(false);
         return;
       }
@@ -68,14 +75,35 @@ export default function DeliveryPage() {
       setNotes(deliveryData.notes || '');
 
       const [productResult, buyerResult] = await Promise.all([
-        supabase.from('products').select('*').eq('id', deliveryData.product_id).single(),
-        supabase.from('profiles').select('*').eq('id', deliveryData.winner_id).single(),
+        supabase.from('products').select('*').eq('id', deliveryData.product_id).maybeSingle(),
+        supabase.from('profiles').select('*').eq('id', deliveryData.winner_id).maybeSingle(),
       ]);
 
-      if (productResult.data) setProduct(productResult.data);
-      if (buyerResult.data) setBuyer(buyerResult.data);
-    } catch (error) {
-      console.error('Error fetching delivery data:', error);
+      if (productResult.error) {
+        setErrorMsg(`商品資料錯誤: ${productResult.error.message}`);
+        setLoading(false);
+        return;
+      }
+      if (!productResult.data) {
+        setErrorMsg('找不到商品資料');
+        setLoading(false);
+        return;
+      }
+      if (buyerResult.error) {
+        setErrorMsg(`買家資料錯誤: ${buyerResult.error.message}`);
+        setLoading(false);
+        return;
+      }
+      if (!buyerResult.data) {
+        setErrorMsg('找不到買家資料（winner_id 無對應 profile）');
+        setLoading(false);
+        return;
+      }
+
+      setProduct(productResult.data);
+      setBuyer(buyerResult.data);
+    } catch (error: any) {
+      setErrorMsg(`載入失敗: ${error?.message || '未知錯誤'}`);
     } finally {
       setLoading(false);
     }
@@ -195,6 +223,7 @@ export default function DeliveryPage() {
       <View style={styles.errorContainer}>
         <Package size={48} color="#FF6B6B" />
         <Text style={styles.errorText}>找不到交付資訊</Text>
+        {errorMsg ? <Text style={styles.errorDetail}>{errorMsg}</Text> : null}
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>返回</Text>
         </TouchableOpacity>
@@ -410,7 +439,8 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0D0D1A' },
   loadingText: { color: '#00D4AA', marginTop: 12, fontSize: 16 },
   errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0D0D1A', padding: 20 },
-  errorText: { color: '#fff', fontSize: 18, marginTop: 16, marginBottom: 24 },
+  errorText: { color: '#fff', fontSize: 18, marginTop: 16, marginBottom: 8 },
+  errorDetail: { color: '#FF6B6B', fontSize: 13, marginBottom: 16, textAlign: 'center', paddingHorizontal: 16 },
   backButton: { backgroundColor: '#00D4AA', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 },
   backButtonText: { color: '#000', fontSize: 16, fontWeight: '700' },
   section: { padding: 16, gap: 12 },

@@ -440,15 +440,27 @@ export default function SellerPage() {
   };
 
   const handleDelivery = async (product: ProductWithCount) => {
-    const target = product.delivery_id || product.pending_delivery_id;
-
-    if (target) {
-      router.push({ pathname: '/delivery/[id]' as any, params: { id: target } });
+    if (!product.winner_id) {
+      Alert.alert('提示', '此商品尚無得標者');
       return;
     }
 
-    // No delivery record yet for this auction product — create it now
-    if (!product.winner_id) return;
+    // Always query DB first — in-memory state can be stale after repeated clicks
+    const { data: existingDelivery } = await supabase
+      .from('deliveries')
+      .select('id')
+      .eq('product_id', product.id)
+      .eq('is_direct_buy', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingDelivery) {
+      router.push({ pathname: '/delivery/[id]' as any, params: { id: existingDelivery.id } });
+      return;
+    }
+
+    // Create new delivery record for this auction
     const { data: newDelivery, error } = await supabase
       .from('deliveries')
       .insert({
@@ -457,6 +469,7 @@ export default function SellerPage() {
         seller_id: product.seller_id,
         status: 'pending',
         is_direct_buy: false,
+        purchase_amount: product.winning_amount ?? 0,
       })
       .select('id')
       .single();
