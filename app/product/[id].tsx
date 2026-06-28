@@ -312,6 +312,51 @@ export default function ProductDetail() {
     }
   };
 
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+
+  const handleGoToDelivery = async () => {
+    if (!product || !user) return;
+    setDeliveryLoading(true);
+    try {
+      // Look up existing auction delivery
+      const { data: existing } = await supabase
+        .from('deliveries')
+        .select('id')
+        .eq('product_id', product.id)
+        .eq('is_direct_buy', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        router.push({ pathname: '/delivery/[id]' as any, params: { id: existing.id } });
+        return;
+      }
+
+      // Create delivery record on first access
+      const { data: newDelivery, error } = await supabase
+        .from('deliveries')
+        .insert({
+          product_id: product.id,
+          winner_id: product.winner_id,
+          seller_id: product.seller_id,
+          status: 'pending',
+          is_direct_buy: false,
+          purchase_amount: product.winning_amount ?? 0,
+        })
+        .select('id')
+        .single();
+
+      if (error || !newDelivery) {
+        alert('無法建立交付記錄，請重試');
+        return;
+      }
+      router.push({ pathname: '/delivery/[id]' as any, params: { id: newDelivery.id } });
+    } finally {
+      setDeliveryLoading(false);
+    }
+  };
+
   const handleDelist = async () => {
     if (!product || !user || user.id !== product.seller_id) return;
     try {
@@ -920,10 +965,11 @@ export default function ProductDetail() {
           {hasSold && isSeller && (
             <View style={styles.section}>
               <TouchableOpacity
-                style={styles.deliveryButton}
-                onPress={() => router.push({ pathname: '/delivery/[id]' as any, params: { id: product.id } })}
+                style={[styles.deliveryButton, deliveryLoading && { opacity: 0.6 }]}
+                onPress={handleGoToDelivery}
+                disabled={deliveryLoading}
               >
-                <Truck size={20} color="#000" />
+                {deliveryLoading ? <ActivityIndicator color="#000" /> : <Truck size={20} color="#000" />}
                 <Text style={styles.deliveryButtonText}>進行交付管理</Text>
               </TouchableOpacity>
             </View>
