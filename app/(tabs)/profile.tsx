@@ -213,12 +213,12 @@ export default function ProfilePage() {
 
   const markAllRead = async () => {
     if (!user || unreadCount === 0) return;
-    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false);
+    await supabase.rpc('rpc_mark_notifications_read', { p_token: sessionToken, p_all: true });
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   };
 
   const markRead = async (id: string) => {
-    await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    await supabase.rpc('rpc_mark_notifications_read', { p_token: sessionToken, p_notification_id: id });
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
   };
 
