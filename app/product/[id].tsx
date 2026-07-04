@@ -45,7 +45,7 @@ export default function ProductDetail() {
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportSuccess, setReportSuccess] = useState(false);
   const [myReport, setMyReport] = useState<any>(null);
-  const { user, currentRole } = useAuth();
+  const { user, currentRole, sessionToken } = useAuth();
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -372,15 +372,14 @@ export default function ProductDetail() {
     setReportSubmitting(true);
     setReportError(null);
     try {
-      const { error } = await supabase.from('reports').insert({
-        reporter_id: user.id,
-        reported_user_id: product.seller_id,
-        product_id: product.id,
-        type: reportType,
-        reason: reportReason.trim(),
-        status: 'pending',
+      const { data: result } = await supabase.rpc('rpc_file_report', {
+        p_token: sessionToken,
+        p_reported_user_id: product.seller_id,
+        p_product_id: product.id,
+        p_type: reportType,
+        p_reason: reportReason.trim(),
       });
-      if (error) throw error;
+      if (result?.error) { setReportError(result.error); return; }
       setReportSuccess(true);
       setMyReport({ id: 'submitted' });
     } catch (e: any) {
