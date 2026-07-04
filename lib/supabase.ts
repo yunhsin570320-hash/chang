@@ -47,7 +47,6 @@ export type Profile = {
   blocked_reason?: string;
   blocked_at?: string;
   warning_count?: number;
-  password_hash?: string;
   phone?: string;
   phone_verified?: boolean;
   phone_verified_at?: string;
@@ -127,12 +126,6 @@ export type Bid = {
   created_at: string;
   bidder?: Profile;
 };
-
-export const PREDEFINED_USERS: Profile[] = [
-  { id: '00000000-0000-0000-0000-000000000001', name: '賣家小明', role: 'seller', is_buyer: true, is_seller: true, email: 'seller1@test.com', created_at: '' },
-  { id: '00000000-0000-0000-0000-000000000002', name: '買家小華', role: 'buyer', is_buyer: true, is_seller: false, email: 'buyer1@test.com', created_at: '' },
-  { id: '00000000-0000-0000-0000-000000000003', name: '買家小美', role: 'buyer', is_buyer: true, is_seller: false, email: 'buyer2@test.com', created_at: '' },
-];
 
 export async function uploadProductImage(source: string): Promise<string> {
   if (!source) return '';
