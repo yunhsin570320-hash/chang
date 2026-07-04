@@ -39,8 +39,6 @@ interface ArchivedRecord {
   product_name: string;
 }
 
-const INITIAL_IMAGE = 'https://images.pexels.com/photos/225503/pexels-photo-225503.jpeg?w=400';
-
 export default function SellerPage() {
   const router = useRouter();
   const [products, setProducts] = useState<ProductWithCount[]>([]);
@@ -59,7 +57,7 @@ export default function SellerPage() {
   const [duration, setDuration] = useState('60');
   const [reservePrice, setReservePrice] = useState('0');
   const [submitting, setSubmitting] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(INITIAL_IMAGE);
+  const [selectedImage, setSelectedImage] = useState('');
   const [imagePickerVisible, setImagePickerVisible] = useState(false);
   const [webCameraVisible, setWebCameraVisible] = useState(false);
   // Listing type
@@ -326,7 +324,7 @@ export default function SellerPage() {
       setReservePrice('0');
       setDirectPrice('');
       setStockQuantity('1');
-      setSelectedImage(INITIAL_IMAGE);
+      setSelectedImage('');
       fetchProducts();
     } catch (error) {
       console.error('Error adding product:', error);
@@ -695,11 +693,20 @@ export default function SellerPage() {
               style={styles.imageSelector}
               onPress={pickImage}
             >
-              <Image source={{ uri: selectedImage }} style={styles.selectedImage} />
-              <View style={styles.imageSelectorOverlay}>
-                <Camera size={24} color="#fff" />
-                <Text style={styles.imageSelectorText}>點擊選擇或拍攝圖片</Text>
-              </View>
+              {selectedImage ? (
+                <Image source={{ uri: selectedImage }} style={styles.selectedImage} />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <Camera size={36} color="#444" />
+                  <Text style={styles.imagePlaceholderText}>點擊選擇或拍攝圖片</Text>
+                </View>
+              )}
+              {selectedImage ? (
+                <View style={styles.imageSelectorOverlay}>
+                  <Camera size={20} color="#fff" />
+                  <Text style={styles.imageSelectorText}>重新選擇</Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
           </View>
 
@@ -1054,7 +1061,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#0D0D1A',
   },
+  imagePlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  imagePlaceholderText: { color: '#555', fontSize: 14 },
   selectedImage: { width: '100%', height: '100%' },
   imageSelectorOverlay: {
     position: 'absolute',
