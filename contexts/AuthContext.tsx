@@ -91,16 +91,13 @@ function sha256JS(message: string): string {
   return H.map(n => n.toString(16).padStart(8, '0')).join('');
 }
 
-function isHashed(value: string): boolean {
-  return /^[0-9a-f]{64}$/.test(value);
-}
-
 interface AuthContextType {
   user: Profile | null;
   currentRole: UserRole;
   isLoading: boolean;
   isLoggingIn: boolean;
   isAdmin: boolean;
+  sessionToken: string | null;
   login: (email: string, password: string) => Promise<{ error: string | null }>;
   register: (
     name: string,
@@ -124,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentRole, setCurrentRole] = useState<UserRole>('buyer');
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -136,9 +134,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       let storedUser: string | null = null;
       let storedRole: string | null = null;
+      let storedToken: string | null = null;
       try {
         storedUser = await AsyncStorage.getItem('auction_user');
         storedRole = await AsyncStorage.getItem('auction_role');
+        storedToken = await AsyncStorage.getItem('auction_session_token');
       } catch {}
 
       if (storedUser) {
@@ -151,18 +151,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         setIsLoading(false);
 
-        // Refresh from DB in background
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', parsedUser.id)
-          .maybeSingle()
-          .then(({ data: freshUser }) => {
-            if (freshUser) {
-              setUser(freshUser);
-              AsyncStorage.setItem('auction_user', JSON.stringify(freshUser)).catch(() => {});
+        if (storedToken) {
+          // Validate existing token
+          const { data: validatedUser } = await supabase.rpc('rpc_validate_session', { p_token: storedToken });
+          if (validatedUser) {
+            setSessionToken(storedToken);
+            setUser(validatedUser as Profile);
+            AsyncStorage.setItem('auction_user', JSON.stringify(validatedUser)).catch(() => {});
+          } else {
+            // Token expired — create a fresh one
+            const { data: newToken } = await supabase.rpc('rpc_create_session', { p_user_id: parsedUser.id });
+            if (newToken) {
+              setSessionToken(newToken as string);
+              AsyncStorage.setItem('auction_session_token', newToken as string).catch(() => {});
             }
-          });
+          }
+        } else {
+          // Existing user without token — upgrade silently
+          const { data: newToken } = await supabase.rpc('rpc_create_session', { p_user_id: parsedUser.id });
+          if (newToken) {
+            setSessionToken(newToken as string);
+            AsyncStorage.setItem('auction_session_token', newToken as string).catch(() => {});
+          }
+          supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', parsedUser.id)
+            .maybeSingle()
+            .then(({ data: freshUser }) => {
+              if (freshUser) {
+                setUser(freshUser);
+                AsyncStorage.setItem('auction_user', JSON.stringify(freshUser)).catch(() => {});
+              }
+            });
+        }
       } else {
         setIsLoading(false);
       }
@@ -171,6 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await AsyncStorage.removeItem('auction_user');
         await AsyncStorage.removeItem('auction_role');
+        await AsyncStorage.removeItem('auction_session_token');
       } catch {}
       setIsLoading(false);
     }
@@ -194,36 +217,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
     setIsLoggingIn(true);
     try {
-      const { data: profiles, error: fetchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('email', email.toLowerCase().trim());
-
-      if (fetchError) return { error: '登入失敗，請稍後再試' };
-      if (!profiles || profiles.length === 0) return { error: '郵箱或密碼錯誤' };
-
       const hashed = await hashPassword(password);
-      const matchedUser = profiles.find(p => {
-        const stored = p.password_hash || '';
-        return isHashed(stored) ? stored === hashed : stored === password;
+      const { data, error: rpcError } = await supabase.rpc('rpc_login', {
+        p_email: email.toLowerCase().trim(),
+        p_password_hash: hashed,
+        p_password_original: password,
       });
-      if (!matchedUser) return { error: '郵箱或密碼錯誤' };
 
-      // Upgrade legacy plaintext password to hash (fire-and-forget)
-      if (matchedUser.password_hash && !isHashed(matchedUser.password_hash)) {
-        supabase.from('profiles').update({ password_hash: hashed }).eq('id', matchedUser.id).then(() => {});
-      }
+      if (rpcError) return { error: '登入失敗，請稍後再試' };
+      if (data?.error) return { error: data.error };
 
-      if (matchedUser.is_blocked) {
-        return { error: `此帳號已被停用。原因：${matchedUser.blocked_reason || '違反使用規範'}` };
-      }
-
+      const matchedUser = data.user as Profile;
+      const token = data.token as string;
       const defaultRole: UserRole = matchedUser.is_seller ? 'seller' : 'buyer';
+
       setUser(matchedUser);
       setCurrentRole(defaultRole);
+      setSessionToken(token);
+
       try {
         await AsyncStorage.setItem('auction_user', JSON.stringify(matchedUser));
         await AsyncStorage.setItem('auction_role', defaultRole);
+        await AsyncStorage.setItem('auction_session_token', token);
       } catch {}
 
       return { error: null };
@@ -245,53 +260,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<{ error: string | null }> => {
     setIsLoggingIn(true);
     try {
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email.toLowerCase().trim())
-        .maybeSingle();
-
-      if (existingUser) return { error: '此郵箱已被註冊' };
-
-      // Check if phone is already taken (if provided)
-      if (phone) {
-        const { data: existingPhone } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('phone', phone)
-          .maybeSingle();
-        if (existingPhone) return { error: '此手機號碼已被其他帳戶使用' };
-      }
-
       const hashedPassword = await hashPassword(password);
-      const { data, error } = await supabase
-        .from('profiles')
-        .insert({
-          name: name.trim(),
-          email: email.toLowerCase().trim(),
-          password_hash: hashedPassword,
-          is_buyer: isBuyer,
-          is_seller: isSeller,
-          role: isSeller ? 'seller' : 'buyer',
-          phone: phone || null,
-          phone_verified: phone ? true : false,
-          phone_verified_at: phone ? new Date().toISOString() : null,
-          shipping_address: shippingAddress || null,
-        })
-        .select()
-        .single();
+      const { data, error: rpcError } = await supabase.rpc('rpc_register', {
+        p_name: name.trim(),
+        p_email: email.toLowerCase().trim(),
+        p_password_hash: hashedPassword,
+        p_is_buyer: isBuyer,
+        p_is_seller: isSeller,
+        p_phone: phone ? phone.replace(/[\s\-()]/g, '') : null,
+        p_shipping_address: shippingAddress || null,
+      });
 
-      if (error || !data) {
-        console.error('Register error:', error);
-        return { error: '註冊失敗，請稍後再試' };
-      }
+      if (rpcError) return { error: '註冊失敗，請稍後再試' };
+      if (data?.error) return { error: data.error };
 
+      const newUser = data.user as Profile;
+      const token = data.token as string;
       const defaultRole: UserRole = isSeller ? 'seller' : 'buyer';
-      setUser(data);
+
+      setUser(newUser);
       setCurrentRole(defaultRole);
+      setSessionToken(token);
+
       try {
-        await AsyncStorage.setItem('auction_user', JSON.stringify(data));
+        await AsyncStorage.setItem('auction_user', JSON.stringify(newUser));
         await AsyncStorage.setItem('auction_role', defaultRole);
+        await AsyncStorage.setItem('auction_session_token', token);
       } catch {}
 
       return { error: null };
@@ -303,11 +297,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    if (sessionToken) {
+      supabase.rpc('rpc_logout', { p_token: sessionToken }).then(() => {}, () => {});
+    }
     setUser(null);
     setCurrentRole('buyer');
+    setSessionToken(null);
     AsyncStorage.removeItem('auction_user').catch(() => {});
     AsyncStorage.removeItem('auction_role').catch(() => {});
-  }, []);
+    AsyncStorage.removeItem('auction_session_token').catch(() => {});
+  }, [sessionToken]);
 
   const switchRole = useCallback((role: UserRole) => {
     if (!user) return;
@@ -330,6 +329,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       isLoggingIn,
       isAdmin,
+      sessionToken,
       login,
       register,
       logout,

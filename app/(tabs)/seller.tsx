@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { Plus, Clock, Package, Camera, X, Check, Trash2, RotateCcw, Truck, Archive, ChevronDown, ChevronUp, Tag, ShoppingCart } from 'lucide-react-native';
-import { supabase, Product, sendAuctionNotifications, uploadProductImage } from '../../lib/supabase';
+import { supabase, Product, uploadProductImage } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { CountdownTimer } from '../../components/CountdownTimer';
 import { WebCamera } from '../../components/WebCamera';
@@ -66,7 +66,7 @@ export default function SellerPage() {
   const [listingType, setListingType] = useState<'auction' | 'direct'>('auction');
   const [directPrice, setDirectPrice] = useState('');
   const [stockQuantity, setStockQuantity] = useState('1');
-  const { user, currentRole } = useAuth();
+  const { user, currentRole, sessionToken } = useAuth();
 
   useFocusEffect(
     useCallback(() => {
@@ -215,7 +215,10 @@ export default function SellerPage() {
           return p && !p.is_archived;
         });
         if (toArchive.length > 0) {
-          await supabase.from('products').update({ is_archived: true }).in('id', toArchive);
+          await supabase.rpc('rpc_seller_archive_products', {
+            p_token: sessionToken,
+            p_product_ids: toArchive,
+          });
           // Re-fetch to get updated is_archived flags
           const { data: refreshed } = await supabase
             .from('products')
@@ -304,26 +307,18 @@ export default function SellerPage() {
     try {
       const imageUrl = await uploadProductImage(selectedImage);
 
-      const payload: Record<string, any> = {
-        name: name.trim(),
-        description: description.trim(),
-        seller_id: user.id,
-        end_time: endTime.toISOString(),
-        image_url: imageUrl,
-        status: 'active',
-        is_approved: true,
-        is_direct_buy: listingType === 'direct',
-      };
-
-      if (listingType === 'auction') {
-        payload.reserve_price = parseInt(reservePrice, 10) || 0;
-      } else {
-        payload.direct_price = parseInt(directPrice, 10);
-        payload.stock_quantity = parseInt(stockQuantity, 10) || 1;
-      }
-
-      const { error } = await supabase.from('products').insert(payload);
-      if (error) throw error;
+      const { data: rpcResult, error } = await supabase.rpc('rpc_seller_create_product', {
+        p_token: sessionToken,
+        p_name: name.trim(),
+        p_description: description.trim(),
+        p_image_url: imageUrl,
+        p_end_time: endTime.toISOString(),
+        p_reserve_price: listingType === 'auction' ? (parseInt(reservePrice, 10) || 0) : 0,
+        p_is_direct_buy: listingType === 'direct',
+        p_direct_price: listingType === 'direct' ? parseInt(directPrice, 10) : null,
+        p_stock_quantity: listingType === 'direct' ? (parseInt(stockQuantity, 10) || 1) : null,
+      });
+      if (error || rpcResult?.error) throw error || new Error(rpcResult.error);
 
       setName('');
       setDescription('');
@@ -349,32 +344,11 @@ export default function SellerPage() {
     if (!endTarget) return;
     setEndSubmitting(true);
     try {
-      const { data: allBids } = await supabase
-        .from('bids')
-        .select('*, bidder:profiles!bidder_id(name, id)')
-        .eq('product_id', endTarget.id)
-        .order('amount', { ascending: false });
-
-      const winningBid = allBids?.[0];
-      const winnerId = winningBid?.bidder_id ?? null;
-      const winningAmount = winningBid?.amount ?? null;
-
-      const { error } = await supabase
-        .from('products')
-        .update({
-          status: 'ended',
-          winner_id: winnerId,
-          winning_amount: winningAmount,
-        })
-        .eq('id', endTarget.id);
-
-      if (error) throw error;
-
-      const bidderIds = (allBids || []).map((b: any) => b.bidder_id).filter(Boolean);
-      if (bidderIds.length > 0) {
-        await sendAuctionNotifications(endTarget.id, endTarget.name, winnerId, winningAmount, bidderIds);
-      }
-
+      const { data, error } = await supabase.rpc('rpc_seller_end_auction', {
+        p_token: sessionToken,
+        p_product_id: endTarget.id,
+      });
+      if (error || data?.error) throw error || new Error(data?.error);
       setEndTarget(null);
       fetchProducts();
     } catch (error) {
@@ -397,16 +371,12 @@ export default function SellerPage() {
     try {
       const endTime = new Date();
       endTime.setMinutes(endTime.getMinutes() + minutes);
-      const { error } = await supabase
-        .from('products')
-        .update({
-          status: 'active',
-          end_time: endTime.toISOString(),
-          winner_id: null,
-          winning_amount: null,
-        })
-        .eq('id', relistTarget.id);
-      if (error) throw error;
+      const { data, error } = await supabase.rpc('rpc_seller_relist_product', {
+        p_token: sessionToken,
+        p_product_id: relistTarget.id,
+        p_end_time: endTime.toISOString(),
+      });
+      if (error || data?.error) throw error || new Error(data?.error);
       setRelistTarget(null);
       fetchProducts();
     } catch (error) {
@@ -425,11 +395,11 @@ export default function SellerPage() {
     if (user.id !== deleteTarget.seller_id) return;
     setDeleteSubmitting(true);
     try {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', deleteTarget.id);
-      if (error) throw error;
+      const { data, error } = await supabase.rpc('rpc_seller_delete_product', {
+        p_token: sessionToken,
+        p_product_id: deleteTarget.id,
+      });
+      if (error || data?.error) throw error || new Error(data?.error);
       setDeleteTarget(null);
       fetchProducts();
     } catch (error) {
@@ -461,24 +431,19 @@ export default function SellerPage() {
     }
 
     // Create new delivery record for this auction
-    const { data: newDelivery, error } = await supabase
-      .from('deliveries')
-      .insert({
-        product_id: product.id,
-        winner_id: product.winner_id,
-        seller_id: product.seller_id,
-        status: 'pending',
-        is_direct_buy: false,
-        purchase_amount: product.winning_amount ?? 0,
-      })
-      .select('id')
-      .single();
+    const { data: rpcResult, error } = await supabase.rpc('rpc_seller_create_delivery', {
+      p_token: sessionToken,
+      p_product_id: product.id,
+      p_winner_id: product.winner_id,
+      p_purchase_amount: product.winning_amount ?? 0,
+      p_is_direct_buy: false,
+    });
 
-    if (error || !newDelivery) {
+    if (error || rpcResult?.error || !rpcResult?.delivery_id) {
       Alert.alert('錯誤', '無法建立交付記錄，請重試');
       return;
     }
-    router.push({ pathname: '/delivery/[id]' as any, params: { id: newDelivery.id } });
+    router.push({ pathname: '/delivery/[id]' as any, params: { id: rpcResult.delivery_id } });
   };
 
   const openFilePicker = async () => {

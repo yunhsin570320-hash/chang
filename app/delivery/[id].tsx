@@ -36,7 +36,7 @@ export default function DeliveryPage() {
   // `id` is the delivery UUID (deliveries.id), not the product id
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, sessionToken } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<Product | null>(null);
@@ -117,10 +117,7 @@ export default function DeliveryPage() {
     setUpdating(true);
     try {
       const now = new Date().toISOString();
-      const updateData: any = { status: newStatus, updated_at: now };
-
-      if (trackingNumber.trim()) updateData.tracking_number = trackingNumber.trim();
-      if (notes.trim()) updateData.notes = notes.trim();
+      let completedSummary: string | null = null;
 
       if (newStatus === 'completed' && buyer) {
         const completedAt = new Date().toLocaleString('zh-TW', {
@@ -130,7 +127,7 @@ export default function DeliveryPage() {
         const amount = delivery.is_direct_buy
           ? (delivery.purchase_amount || 0)
           : (product.winning_amount || 0);
-        const summary = [
+        completedSummary = [
           `【${product.name}】`,
           delivery.is_direct_buy ? `購買數量：${delivery.quantity} 件` : null,
           `買家：${buyer.name}`,
@@ -144,33 +141,25 @@ export default function DeliveryPage() {
           notes.trim() ? `備註：${notes.trim()}` : null,
           `完成時間：${completedAt}`,
         ].filter(Boolean).join('\n');
-
-        updateData.completed_summary = summary;
-        updateData.completed_at = now;
-
-        // Only archive the product for auction completions (not direct buy with remaining stock)
-        if (!delivery.is_direct_buy) {
-          await supabase.from('products').update({ is_archived: true }).eq('id', product.id);
-        }
-
-        // Notify buyer
-        await supabase.from('notifications').insert({
-          user_id: delivery.winner_id,
-          product_id: product.id,
-          type: 'auction_ended',
-          title: '交付完成',
-          message: `「${product.name}」已完成交付，感謝您的購買！`,
-          is_read: false,
-        });
       }
 
-      const { error } = await supabase
-        .from('deliveries')
-        .update(updateData)
-        .eq('id', delivery.id);
+      const { data, error } = await supabase.rpc('rpc_seller_update_delivery', {
+        p_token: sessionToken,
+        p_delivery_id: delivery.id,
+        p_status: newStatus,
+        p_tracking_number: trackingNumber.trim() || null,
+        p_notes: notes.trim() || null,
+        p_completed_summary: completedSummary,
+        p_completed_at: newStatus === 'completed' ? now : null,
+      });
 
-      if (error) throw error;
-      setDelivery({ ...delivery, ...updateData });
+      if (error || data?.error) throw error || new Error(data?.error);
+
+      setDelivery({ ...delivery, status: newStatus,
+        tracking_number: trackingNumber.trim() || delivery.tracking_number,
+        notes: notes.trim() || delivery.notes,
+        updated_at: now,
+      });
 
       if (newStatus === 'completed') {
         Alert.alert(

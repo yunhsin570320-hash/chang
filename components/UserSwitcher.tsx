@@ -54,7 +54,7 @@ export function UserSwitcher() {
                 >
                   <View style={styles.userInfo}>
                     <Text style={styles.userNameModal}>{item.name}</Text>
-                    <Text style={styles.userRole}>{getRoleLabel(item.role)}</Text>
+                    <Text style={styles.userRole}>{getRoleLabel(item.role || 'buyer')}</Text>
                   </View>
                   {currentUser?.id === item.id && <Text style={styles.checkmark}>V</Text>}
                 </TouchableOpacity>

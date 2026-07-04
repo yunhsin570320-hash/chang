@@ -59,7 +59,7 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 export default function AdminPage() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, sessionToken } = useAuth();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -189,79 +189,17 @@ export default function AdminPage() {
     if (!isAdmin) return;
     setActioning(true);
     try {
-      const logEntry: any = {
-        admin_id: user.id,
-        action_type: selectedAction,
-        reason: actionReason.trim(),
-      };
-
-      if (actionTarget.type === 'user') {
-        logEntry.target_user_id = actionTarget.id;
-
-        if (selectedAction === 'warn') {
-          await supabase.from('profiles')
-            .update({ warning_count: (members.find(m => m.id === actionTarget.id)?.warning_count || 0) + 1 })
-            .eq('id', actionTarget.id);
-          // Send notification
-          await supabase.from('notifications').insert({
-            user_id: actionTarget.id,
-            type: 'auction_ended',
-            title: '帳號警告通知',
-            message: `您的帳號已收到管理員警告。原因：${actionReason.trim()}`,
-            is_read: false,
-          });
-        } else if (selectedAction === 'block') {
-          await supabase.from('profiles').update({
-            is_blocked: true,
-            blocked_reason: actionReason.trim(),
-            blocked_at: new Date().toISOString(),
-          }).eq('id', actionTarget.id);
-          // Force end all active products by this user
-          await supabase.from('products').update({ status: 'ended' }).eq('seller_id', actionTarget.id).eq('status', 'active');
-        } else if (selectedAction === 'unblock') {
-          await supabase.from('profiles').update({
-            is_blocked: false,
-            blocked_reason: null,
-            blocked_at: null,
-          }).eq('id', actionTarget.id);
-        }
-      } else if (actionTarget.type === 'product') {
-        logEntry.product_id = actionTarget.id;
-
-        if (selectedAction === 'remove_product') {
-          await supabase.from('products').update({ status: 'ended', is_flagged: true, flag_reason: actionReason.trim(), is_approved: false }).eq('id', actionTarget.id);
-        } else if (selectedAction === 'approve_product') {
-          await supabase.from('products').update({ is_flagged: false, flag_reason: null, is_approved: true }).eq('id', actionTarget.id);
-        }
-      } else if (actionTarget.type === 'report') {
-        const newStatus = selectedAction === 'resolve_report' ? 'resolved' : 'dismissed';
-        const report = reports.find(r => r.id === actionTarget.id);
-        await supabase.from('reports').update({
-          status: newStatus,
-          resolved_by: user.id,
-          resolved_at: new Date().toISOString(),
-          admin_note: actionReason.trim(),
-        }).eq('id', actionTarget.id);
-        logEntry.target_user_id = report?.reported_user_id || null;
-
-        // Notify the reporter of the outcome
-        if (report?.reporter_id) {
-          const isResolved = newStatus === 'resolved';
-          const productName = (report as any).product?.name || '該商品';
-          await supabase.from('notifications').insert({
-            user_id: report.reporter_id,
-            type: 'auction_ended',
-            title: isResolved ? '您的檢舉已受理' : '您的檢舉已審閱',
-            message: isResolved
-              ? `您對「${productName}」的檢舉已由管理員受理並採取行動。管理員備註：${actionReason.trim()}`
-              : `您對「${productName}」的檢舉經審閱後暫不採取行動。管理員備註：${actionReason.trim()}`,
-            product_id: report.product_id || null,
-            is_read: false,
-          });
-        }
+      const { data, error } = await supabase.rpc('rpc_admin_action', {
+        p_token: sessionToken,
+        p_action_type: selectedAction,
+        p_target_type: actionTarget.type,
+        p_target_id: actionTarget.id,
+        p_reason: actionReason.trim(),
+      });
+      if (error || data?.error) {
+        console.error('Admin action error:', error || data?.error);
+        return;
       }
-
-      await supabase.from('admin_actions').insert(logEntry);
       await fetchStats();
       await fetchTabData(activeTab);
       setActionModal(false);
