@@ -19,10 +19,8 @@ function NativeCamera({ visible, onCapture, onClose }: WebCameraProps) {
 
   const handleCapture = async () => {
     if (!cameraRef.current) return;
-    const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: true });
-    if (photo?.base64) {
-      onCapture(`data:image/jpeg;base64,${photo.base64}`);
-    } else if (photo?.uri) {
+    const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: false });
+    if (photo?.uri) {
       onCapture(photo.uri);
     }
   };

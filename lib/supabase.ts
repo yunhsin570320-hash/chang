@@ -135,24 +135,61 @@ export const PREDEFINED_USERS: Profile[] = [
 ];
 
 export async function uploadProductImage(source: string): Promise<string> {
+  if (!source) return '';
   // Pass through remote URLs unchanged
-  if (!source.startsWith('data:') && !source.startsWith('file://')) return source;
+  if (!source.startsWith('data:') && !source.startsWith('file://') && !source.startsWith('content://')) {
+    return source;
+  }
 
-  // fetch() converts data: and file:// to a Blob on both web and React Native
-  const response = await fetch(source);
-  const blob = await response.blob();
-  const mime = blob.type || 'image/jpeg';
-  const ext = mime === 'image/png' ? 'png' : 'jpg';
-  const path = `product-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const path = `product-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-  const { error } = await supabase.storage
-    .from('product-images')
-    .upload(path, blob, { contentType: mime, upsert: false });
+  if (source.startsWith('data:')) {
+    // Decode base64 data URL — works on all browsers and React Native (atob is universal)
+    const commaIdx = source.indexOf(',');
+    const header = source.slice(0, commaIdx);
+    const base64Data = source.slice(commaIdx + 1);
+    const mime = header.match(/data:([^;]+)/)?.[1] ?? 'image/jpeg';
+    const ext = mime === 'image/png' ? 'png' : 'jpg';
+    const filename = `${path}.${ext}`;
 
-  if (error) throw error;
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-  const { data } = supabase.storage.from('product-images').getPublicUrl(path);
-  return data.publicUrl;
+    const { error } = await supabase.storage
+      .from('product-images')
+      .upload(filename, bytes, { contentType: mime, upsert: false });
+
+    if (error) throw new Error(`Storage upload failed: ${error.message}`);
+
+    const { data } = supabase.storage.from('product-images').getPublicUrl(filename);
+    return data.publicUrl;
+  }
+
+  // file:// or content:// URI (Expo native) — use FormData with direct REST upload
+  const uriExt = source.split('?')[0].split('.').pop()?.toLowerCase() ?? 'jpg';
+  const mime = uriExt === 'png' ? 'image/png' : 'image/jpeg';
+  const filename = `${path}.${uriExt === 'png' ? 'png' : 'jpg'}`;
+
+  const formData = new FormData();
+  formData.append('file', { uri: source, type: mime, name: filename } as any);
+
+  const res = await fetch(
+    `${supabaseUrl}/storage/v1/object/product-images/${filename}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        apikey: supabaseAnonKey,
+      },
+      body: formData,
+    }
+  );
+  if (!res.ok) {
+    const msg = await res.text().catch(() => res.status.toString());
+    throw new Error(`Storage upload failed: ${msg}`);
+  }
+  return `${supabaseUrl}/storage/v1/object/public/product-images/${filename}`;
 }
 
 export async function sendAuctionNotifications(

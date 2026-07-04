@@ -326,9 +326,10 @@ export default function SellerPage() {
       setStockQuantity('1');
       setSelectedImage('');
       fetchProducts();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding product:', error);
-      Alert.alert('錯誤', '新增商品失敗');
+      const msg = error?.message || String(error) || '未知錯誤';
+      Alert.alert('上架失敗', msg);
     } finally {
       setSubmitting(false);
     }
@@ -473,14 +474,10 @@ export default function SellerPage() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         quality: 0.8,
-        base64: true,
+        base64: false,
       });
       if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const dataUrl = asset.base64
-          ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
-          : asset.uri;
-        setSelectedImage(dataUrl);
+        setSelectedImage(result.assets[0].uri);
         setImagePickerVisible(false);
       }
     }
