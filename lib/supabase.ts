@@ -3,6 +3,30 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
+export async function callRpc<T = any>(
+  fn: string,
+  args?: Record<string, any>
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/rpc-proxy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ fn, args: args || {} }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      return { data: null, error: { message: text } };
+    }
+    return await res.json();
+  } catch (e: any) {
+    return { data: null, error: { message: e.message || 'Network error' } };
+  }
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,

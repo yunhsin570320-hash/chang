@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Truck, MapPin, Phone, User, Package, Check, Mail, CreditCard, Banknote, ShoppingCart } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { supabase, Product, Profile } from '../../lib/supabase';
+import { supabase, callRpc, Product, Profile } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface DeliveryInfo {
@@ -143,7 +143,7 @@ export default function DeliveryPage() {
         ].filter(Boolean).join('\n');
       }
 
-      const { data, error } = await supabase.rpc('rpc_seller_update_delivery', {
+      const { data, error } = await callRpc('rpc_seller_update_delivery', {
         p_token: sessionToken,
         p_delivery_id: delivery.id,
         p_status: newStatus,

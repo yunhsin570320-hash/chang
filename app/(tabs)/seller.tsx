@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { Plus, Clock, Package, Camera, X, Check, Trash2, RotateCcw, Truck, Archive, ChevronDown, ChevronUp, Tag, ShoppingCart } from 'lucide-react-native';
-import { supabase, Product, uploadProductImage } from '../../lib/supabase';
+import { supabase, callRpc, Product, uploadProductImage } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { CountdownTimer } from '../../components/CountdownTimer';
 import { WebCamera } from '../../components/WebCamera';
@@ -215,7 +215,7 @@ export default function SellerPage() {
           return p && !p.is_archived;
         });
         if (toArchive.length > 0) {
-          await supabase.rpc('rpc_seller_archive_products', {
+          await callRpc('rpc_seller_archive_products', {
             p_token: sessionToken,
             p_product_ids: toArchive,
           });
@@ -307,7 +307,7 @@ export default function SellerPage() {
     try {
       const imageUrl = await uploadProductImage(selectedImage);
 
-      const { data: rpcResult, error } = await supabase.rpc('rpc_seller_create_product', {
+      const { data: rpcResult, error } = await callRpc('rpc_seller_create_product', {
         p_token: sessionToken,
         p_name: name.trim(),
         p_description: description.trim(),
@@ -344,7 +344,7 @@ export default function SellerPage() {
     if (!endTarget) return;
     setEndSubmitting(true);
     try {
-      const { data, error } = await supabase.rpc('rpc_seller_end_auction', {
+      const { data, error } = await callRpc('rpc_seller_end_auction', {
         p_token: sessionToken,
         p_product_id: endTarget.id,
       });
@@ -371,7 +371,7 @@ export default function SellerPage() {
     try {
       const endTime = new Date();
       endTime.setMinutes(endTime.getMinutes() + minutes);
-      const { data, error } = await supabase.rpc('rpc_seller_relist_product', {
+      const { data, error } = await callRpc('rpc_seller_relist_product', {
         p_token: sessionToken,
         p_product_id: relistTarget.id,
         p_end_time: endTime.toISOString(),
@@ -395,7 +395,7 @@ export default function SellerPage() {
     if (user.id !== deleteTarget.seller_id) return;
     setDeleteSubmitting(true);
     try {
-      const { data, error } = await supabase.rpc('rpc_seller_delete_product', {
+      const { data, error } = await callRpc('rpc_seller_delete_product', {
         p_token: sessionToken,
         p_product_id: deleteTarget.id,
       });
@@ -431,7 +431,7 @@ export default function SellerPage() {
     }
 
     // Create new delivery record for this auction
-    const { data: rpcResult, error } = await supabase.rpc('rpc_seller_create_delivery', {
+    const { data: rpcResult, error } = await callRpc('rpc_seller_create_delivery', {
       p_token: sessionToken,
       p_product_id: product.id,
       p_winner_id: product.winner_id,

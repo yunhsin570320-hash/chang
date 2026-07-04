@@ -9,7 +9,7 @@ import {
   RotateCcw, MessageSquare, Clock, TrendingUp,
 } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { supabase, Profile, Report, Product } from '../../lib/supabase';
+import { supabase, callRpc, Profile, Report, Product } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 
@@ -189,7 +189,7 @@ export default function AdminPage() {
     if (!isAdmin) return;
     setActioning(true);
     try {
-      const { data, error } = await supabase.rpc('rpc_admin_action', {
+      const { data, error } = await callRpc('rpc_admin_action', {
         p_token: sessionToken,
         p_action_type: selectedAction,
         p_target_type: actionTarget.type,

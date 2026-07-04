@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Clock, Users, ShoppingBag, Trophy, EyeOff, X, Crown, RotateCcw, Trash2, Truck, Tag, ShoppingCart, Package, Check, Minus, Plus, Flag } from 'lucide-react-native';
-import { supabase, Product, Bid, Profile, sendAuctionNotifications } from '../../lib/supabase';
+import { supabase, callRpc, Product, Bid, Profile, sendAuctionNotifications } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { CountdownTimer } from '../../components/CountdownTimer';
 
@@ -372,7 +372,7 @@ export default function ProductDetail() {
     setReportSubmitting(true);
     setReportError(null);
     try {
-      const { data: result } = await supabase.rpc('rpc_file_report', {
+      const { data: result } = await callRpc('rpc_file_report', {
         p_token: sessionToken,
         p_reported_user_id: product.seller_id,
         p_product_id: product.id,

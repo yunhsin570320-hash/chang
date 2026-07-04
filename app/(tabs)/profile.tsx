@@ -15,7 +15,7 @@ import {
   User, Package, Crown, Bell, BellOff, Phone, CreditCard,
   MapPin, Building2, Edit3, Check, X, ChevronRight, Trophy, ShieldCheck, ShieldAlert,
 } from 'lucide-react-native';
-import { supabase, Bid, Product, Notification } from '../../lib/supabase';
+import { supabase, callRpc, Bid, Product, Notification } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -188,7 +188,7 @@ export default function ProfilePage() {
 
     setSaving(true);
     try {
-      const { data: result } = await supabase.rpc('rpc_update_profile', {
+      const { data: result } = await callRpc('rpc_update_profile', {
         p_token: sessionToken,
         p_phone: editPhone.trim(),
         p_payment_method: editPayment.trim() || null,
@@ -213,12 +213,12 @@ export default function ProfilePage() {
 
   const markAllRead = async () => {
     if (!user || unreadCount === 0) return;
-    await supabase.rpc('rpc_mark_notifications_read', { p_token: sessionToken, p_all: true });
+    await callRpc('rpc_mark_notifications_read', { p_token: sessionToken, p_all: true });
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   };
 
   const markRead = async (id: string) => {
-    await supabase.rpc('rpc_mark_notifications_read', { p_token: sessionToken, p_notification_id: id });
+    await callRpc('rpc_mark_notifications_read', { p_token: sessionToken, p_notification_id: id });
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
   };
 

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Profile, supabase } from '../lib/supabase';
+import { Profile, supabase, callRpc } from '../lib/supabase';
 
 type UserRole = 'buyer' | 'seller';
 
@@ -144,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (storedUser && storedToken) {
         const parsedUser = JSON.parse(storedUser) as Profile;
 
-        const { data: validatedUser } = await supabase.rpc('rpc_validate_session', { p_token: storedToken });
+        const { data: validatedUser } = await callRpc('rpc_validate_session', { p_token: storedToken });
         if (validatedUser) {
           setUser(validatedUser as Profile);
           setSessionToken(storedToken);
@@ -203,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoggingIn(true);
     try {
       const hashed = await hashPassword(password);
-      const { data, error: rpcError } = await supabase.rpc('rpc_login', {
+      const { data, error: rpcError } = await callRpc('rpc_login', {
         p_email: email.toLowerCase().trim(),
         p_password_hash: hashed,
         p_password_original: password,
@@ -246,7 +246,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoggingIn(true);
     try {
       const hashedPassword = await hashPassword(password);
-      const { data, error: rpcError } = await supabase.rpc('rpc_register', {
+      const { data, error: rpcError } = await callRpc('rpc_register', {
         p_name: name.trim(),
         p_email: email.toLowerCase().trim(),
         p_password_hash: hashedPassword,
@@ -283,7 +283,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     if (sessionToken) {
-      supabase.rpc('rpc_logout', { p_token: sessionToken }).then(() => {}, () => {});
+      callRpc('rpc_logout', { p_token: sessionToken }).then(() => {}, () => {});
     }
     setUser(null);
     setCurrentRole('buyer');
