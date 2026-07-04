@@ -141,51 +141,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         storedToken = await AsyncStorage.getItem('auction_session_token');
       } catch {}
 
-      if (storedUser) {
+      if (storedUser && storedToken) {
         const parsedUser = JSON.parse(storedUser) as Profile;
-        setUser(parsedUser);
-        if (storedRole === 'seller' || storedRole === 'buyer') {
-          setCurrentRole(storedRole as UserRole);
+
+        const { data: validatedUser } = await supabase.rpc('rpc_validate_session', { p_token: storedToken });
+        if (validatedUser) {
+          setUser(validatedUser as Profile);
+          setSessionToken(storedToken);
+          if (storedRole === 'seller' || storedRole === 'buyer') {
+            setCurrentRole(storedRole as UserRole);
+          } else {
+            setCurrentRole((validatedUser as Profile).is_seller ? 'seller' : 'buyer');
+          }
+          AsyncStorage.setItem('auction_user', JSON.stringify(validatedUser)).catch(() => {});
         } else {
+          // Token expired — clear session, require re-login
+          AsyncStorage.removeItem('auction_user').catch(() => {});
+          AsyncStorage.removeItem('auction_role').catch(() => {});
+          AsyncStorage.removeItem('auction_session_token').catch(() => {});
+          // Keep parsedUser to avoid flash but don't set token — they'll be redirected
+          setUser(parsedUser);
           setCurrentRole(parsedUser.is_seller ? 'seller' : 'buyer');
         }
         setIsLoading(false);
-
-        if (storedToken) {
-          // Validate existing token
-          const { data: validatedUser } = await supabase.rpc('rpc_validate_session', { p_token: storedToken });
-          if (validatedUser) {
-            setSessionToken(storedToken);
-            setUser(validatedUser as Profile);
-            AsyncStorage.setItem('auction_user', JSON.stringify(validatedUser)).catch(() => {});
-          } else {
-            // Token expired — create a fresh one
-            const { data: newToken } = await supabase.rpc('rpc_create_session', { p_user_id: parsedUser.id });
-            if (newToken) {
-              setSessionToken(newToken as string);
-              AsyncStorage.setItem('auction_session_token', newToken as string).catch(() => {});
-            }
-          }
-        } else {
-          // Existing user without token — upgrade silently
-          const { data: newToken } = await supabase.rpc('rpc_create_session', { p_user_id: parsedUser.id });
-          if (newToken) {
-            setSessionToken(newToken as string);
-            AsyncStorage.setItem('auction_session_token', newToken as string).catch(() => {});
-          }
-          supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', parsedUser.id)
-            .maybeSingle()
-            .then(({ data: freshUser }) => {
-              if (freshUser) {
-                setUser(freshUser);
-                AsyncStorage.setItem('auction_user', JSON.stringify(freshUser)).catch(() => {});
-              }
-            });
-        }
       } else {
+        // No user or no token — clear any stale storage
+        if (storedUser || storedToken) {
+          AsyncStorage.removeItem('auction_user').catch(() => {});
+          AsyncStorage.removeItem('auction_role').catch(() => {});
+          AsyncStorage.removeItem('auction_session_token').catch(() => {});
+        }
         setIsLoading(false);
       }
     } catch (error) {

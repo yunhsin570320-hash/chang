@@ -56,7 +56,7 @@ export default function ProfilePage() {
   const [otpCountdown, setOtpCountdown] = useState(0);
   const [otpVerified, setOtpVerified] = useState(false);
 
-  const { user, currentRole, switchRole, logout, canSwitchRoles, refreshUser } = useAuth();
+  const { user, currentRole, switchRole, logout, canSwitchRoles, refreshUser, sessionToken } = useAuth();
   const router = useRouter();
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
@@ -186,35 +186,21 @@ export default function ProfilePage() {
       return;
     }
 
-    // Check phone uniqueness if changed
-    if (phoneChanged) {
-      const { data: existing } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('phone', editPhone)
-        .neq('id', user.id)
-        .maybeSingle();
-      if (existing) {
-        setEditError('此手機號碼已被其他帳戶使用');
-        return;
-      }
-    }
-
     setSaving(true);
     try {
-      const updatePayload: Record<string, any> = {
-        phone: editPhone.trim(),
-        payment_method: editPayment.trim() || null,
-        bank_account: editBankAccount.trim() || null,
-        shipping_address: editAddress.trim(),
-      };
-
-      if (otpVerified) {
-        updatePayload.phone_verified = true;
-        updatePayload.phone_verified_at = new Date().toISOString();
+      const { data: result } = await supabase.rpc('rpc_update_profile', {
+        p_token: sessionToken,
+        p_phone: editPhone.trim(),
+        p_payment_method: editPayment.trim() || null,
+        p_bank_account: editBankAccount.trim() || null,
+        p_shipping_address: editAddress.trim(),
+        p_phone_verified: otpVerified ? true : null,
+        p_phone_verified_at: otpVerified ? new Date().toISOString() : null,
+      });
+      if (result?.error) {
+        setEditError(result.error);
+        return;
       }
-
-      await supabase.from('profiles').update(updatePayload).eq('id', user.id);
       await refreshUser();
       setEditModalVisible(false);
     } catch (e) {
