@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "blind-auction",
-    "slug": "blind-auction",
+    "name": "化工生產 ERP",
+    "slug": "chemical-erp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "chemicalerp",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
@@ -18,14 +18,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font",
-      "expo-web-browser",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "允許此應用程式使用相機拍攝商品照片"
-        }
-      ]
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
