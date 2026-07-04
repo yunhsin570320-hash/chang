@@ -9,9 +9,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Crown, User, Mail, Lock, Eye, EyeOff, Check, Phone, MapPin, ShieldCheck } from 'lucide-react-native';
+import { Crown, User, Mail, Lock, Eye, EyeOff, Check, Phone, MapPin, ShieldCheck, FileText, X, ChevronRight } from 'lucide-react-native';
 import { useAuth } from '../contexts/AuthContext';
 
 function validateTWPhone(phone: string): boolean {
@@ -22,6 +23,7 @@ function validateTWPhone(phone: string): boolean {
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState<'form' | 'otp'>('form');
+  const [showTerms, setShowTerms] = useState(false);
 
   // Form fields
   const [name, setName] = useState('');
@@ -370,10 +372,144 @@ export default function AuthPage() {
           <Text style={styles.demoText}>賣家: seller1@test.com</Text>
           <Text style={styles.demoText}>買家: buyer1@test.com</Text>
         </View>
+
+        <TouchableOpacity style={styles.termsButton} onPress={() => setShowTerms(true)}>
+          <FileText size={16} color="#555" />
+          <Text style={styles.termsButtonText}>查看使用規則與注意事項</Text>
+          <ChevronRight size={14} color="#555" />
+        </TouchableOpacity>
       </ScrollView>
+
+      {/* Terms Modal */}
+      <Modal
+        visible={showTerms}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowTerms(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <FileText size={22} color="#00D4AA" />
+                <Text style={styles.modalTitle}>使用規則與注意事項</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowTerms(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <X size={22} color="#888" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.termsUpdated}>最後更新：2026年7月</Text>
+
+              <TermsSection title="一、平台說明">
+                <TermsParagraph>
+                  「暗標競標會」（以下簡稱「本平台」）為線上暗標（密封投標）競標平台。所有出價在競標結束前對其他參與者完全保密，僅由系統記錄，確保公平競標。
+                </TermsParagraph>
+              </TermsSection>
+
+              <TermsSection title="二、帳戶規則">
+                <TermsBullet>每位用戶限申請一個帳戶，嚴禁使用多帳戶參與同一商品競標。</TermsBullet>
+                <TermsBullet>註冊時請填寫真實姓名、有效電子郵箱及台灣手機號碼，以便聯絡與交付。</TermsBullet>
+                <TermsBullet>帳戶密碼請妥善保管，因密碼外洩導致的損失由用戶自行負責。</TermsBullet>
+                <TermsBullet>帳戶資料如有變更（電話、地址），請立即於個人資料頁面更新。</TermsBullet>
+              </TermsSection>
+
+              <TermsSection title="三、暗標競標規則">
+                <TermsBullet>競標採密封出價制，出價送出後不得修改或撤銷。</TermsBullet>
+                <TermsBullet>競標期間所有出價金額對其他競標者保密，由系統統一記錄。</TermsBullet>
+                <TermsBullet>競標結束時，出價最高者為得標者；若有最高出價相同，以先出價者優先。</TermsBullet>
+                <TermsBullet>部分商品設有保留底價，未達底價則流標，無人得標。</TermsBullet>
+                <TermsBullet>部分商品提供直接購買選項，可免競標直接以固定價格購入。</TermsBullet>
+              </TermsSection>
+
+              <TermsSection title="四、買家守則">
+                <TermsBullet>出價前請確認商品資訊、圖片及說明，出價即視為同意以該金額購買。</TermsBullet>
+                <TermsBullet>得標後請於 72 小時內完成付款，逾期視為棄標，帳戶可能受到處分。</TermsBullet>
+                <TermsBullet>棄標紀錄累計達 2 次者，帳戶將被限制競標權限。</TermsBullet>
+                <TermsBullet>商品以「現況」出售，請競標前確認您已閱讀並接受商品說明。</TermsBullet>
+                <TermsBullet>交付地址請確保準確完整，因地址錯誤造成的遺失由買家負責。</TermsBullet>
+              </TermsSection>
+
+              <TermsSection title="五、賣家守則">
+                <TermsBullet>刊登商品時，標題、說明及圖片須真實反映商品現況，不得虛假描述。</TermsBullet>
+                <TermsBullet>商品圖片須為實際商品照片，禁止使用網路盜圖或誤導性圖片。</TermsBullet>
+                <TermsBullet>競標結束後，賣家須於 5 個工作天內完成商品寄送或安排交付。</TermsBullet>
+                <TermsBullet>禁止上架違禁品、仿冒品、違法商品，違者帳戶立即停用並依法追究。</TermsBullet>
+                <TermsBullet>賣家可設定保留底價，但底價一旦設定不可於競標期間更改。</TermsBullet>
+              </TermsSection>
+
+              <TermsSection title="六、禁止行為">
+                <TermsBullet>禁止虛假出價、假標（即得標後故意棄標以干擾競標）。</TermsBullet>
+                <TermsBullet>禁止買賣雙方私下串通，操控競標結果。</TermsBullet>
+                <TermsBullet>禁止騷擾、恐嚇或欺詐其他用戶。</TermsBullet>
+                <TermsBullet>禁止上架任何侵犯智慧財產權之商品。</TermsBullet>
+                <TermsBullet>禁止嘗試入侵或干擾平台系統正常運作。</TermsBullet>
+              </TermsSection>
+
+              <TermsSection title="七、違規處理">
+                <TermsParagraph>
+                  違反上述規則者，本平台得視情節輕重給予警告、暫停帳戶、或永久封鎖帳戶之處分。情節嚴重者，本平台保留追究法律責任之權利。
+                </TermsParagraph>
+              </TermsSection>
+
+              <TermsSection title="八、隱私保護">
+                <TermsParagraph>
+                  您的個人資料（姓名、電話、地址）僅用於競標通知、帳戶管理及商品交付，不會出售或提供給第三方。平台採用加密技術保護您的資料安全。
+                </TermsParagraph>
+              </TermsSection>
+
+              <TermsSection title="九、免責聲明">
+                <TermsParagraph>
+                  本平台為買賣媒介，對商品品質、真偽及交易結果不負擔保責任。如發生交易糾紛，本平台將協助調解，但最終責任由交易雙方自行承擔。
+                </TermsParagraph>
+              </TermsSection>
+
+              <View style={styles.termsFooter}>
+                <Text style={styles.termsFooterText}>
+                  使用本平台即表示您已閱讀並同意以上所有規則。
+                </Text>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity style={styles.modalCloseButton} onPress={() => setShowTerms(false)}>
+              <Text style={styles.modalCloseButtonText}>我已閱讀並了解</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
+
+function TermsSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={termsSectionStyle}>
+      <Text style={termsTitleStyle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+function TermsBullet({ children }: { children: string }) {
+  return (
+    <View style={termsBulletRow}>
+      <Text style={termsBulletDot}>•</Text>
+      <Text style={termsBulletText}>{children}</Text>
+    </View>
+  );
+}
+
+function TermsParagraph({ children }: { children: string }) {
+  return <Text style={termsParagraphStyle}>{children}</Text>;
+}
+
+const termsSectionStyle: object = { marginBottom: 20 };
+const termsTitleStyle: object = { fontSize: 15, fontWeight: '700', color: '#00D4AA', marginBottom: 10 };
+const termsBulletRow: object = { flexDirection: 'row', marginBottom: 7, paddingRight: 4 };
+const termsBulletDot: object = { color: '#00D4AA', fontSize: 14, marginRight: 8, marginTop: 1 };
+const termsBulletText: object = { flex: 1, color: '#aaa', fontSize: 14, lineHeight: 20 };
+const termsParagraphStyle: object = { color: '#aaa', fontSize: 14, lineHeight: 20 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0D0D1A' },
@@ -464,4 +600,57 @@ const styles = StyleSheet.create({
   },
   demoTitle: { color: '#FFD700', fontSize: 14, fontWeight: '700', marginBottom: 8 },
   demoText: { color: '#888', fontSize: 12, marginBottom: 4 },
+  termsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 20,
+    paddingVertical: 12,
+  },
+  termsButtonText: { color: '#555', fontSize: 13 },
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: '#1A1A2E',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '90%',
+    borderTopWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.3)',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.07)',
+  },
+  modalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  modalScroll: { paddingHorizontal: 20, paddingTop: 16 },
+  termsUpdated: { color: '#444', fontSize: 12, marginBottom: 20 },
+  termsFooter: {
+    marginTop: 8,
+    marginBottom: 24,
+    padding: 14,
+    backgroundColor: 'rgba(0, 212, 170, 0.08)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.2)',
+  },
+  termsFooterText: { color: '#00D4AA', fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  modalCloseButton: {
+    margin: 16,
+    backgroundColor: '#00D4AA',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: { color: '#000', fontSize: 16, fontWeight: '700' },
 });
