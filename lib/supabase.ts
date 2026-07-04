@@ -158,7 +158,7 @@ export async function uploadProductImage(source: string): Promise<string> {
 
     const { error } = await supabase.storage
       .from('product-images')
-      .upload(filename, bytes, { contentType: mime, upsert: false });
+      .upload(filename, bytes.buffer as ArrayBuffer, { contentType: mime, upsert: false });
 
     if (error) throw new Error(`Storage upload failed: ${error.message}`);
 
