@@ -134,27 +134,20 @@ export const PREDEFINED_USERS: Profile[] = [
   { id: '00000000-0000-0000-0000-000000000003', name: '買家小美', role: 'buyer', is_buyer: true, is_seller: false, email: 'buyer2@test.com', created_at: '' },
 ];
 
-export async function uploadProductImage(dataUrl: string): Promise<string> {
-  if (!dataUrl.startsWith('data:')) return dataUrl;
+export async function uploadProductImage(source: string): Promise<string> {
+  // Pass through remote URLs unchanged
+  if (!source.startsWith('data:') && !source.startsWith('file://')) return source;
 
-  const commaIdx = dataUrl.indexOf(',');
-  const header = dataUrl.slice(0, commaIdx);
-  const base64Data = dataUrl.slice(commaIdx + 1);
-  const mimeMatch = header.match(/data:([^;]+)/);
-  const mime = mimeMatch?.[1] ?? 'image/jpeg';
+  // fetch() converts data: and file:// to a Blob on both web and React Native
+  const response = await fetch(source);
+  const blob = await response.blob();
+  const mime = blob.type || 'image/jpeg';
   const ext = mime === 'image/png' ? 'png' : 'jpg';
-
-  const binaryString = atob(base64Data);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
   const path = `product-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
   const { error } = await supabase.storage
     .from('product-images')
-    .upload(path, bytes, { contentType: mime, upsert: false });
+    .upload(path, blob, { contentType: mime, upsert: false });
 
   if (error) throw error;
 
