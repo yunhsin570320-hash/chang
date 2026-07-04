@@ -1,13 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Profile, ErpRole, callRpc } from '../lib/supabase';
+import { Profile, supabase, callRpc } from '../lib/supabase';
 
-const ERP_ROLE_LEVELS: Record<ErpRole, number> = {
-  viewer: 1,
-  operator: 2,
-  manager: 3,
-  admin: 4,
-};
+type UserRole = 'buyer' | 'seller';
 
 async function hashPassword(password: string): Promise<string> {
   if (typeof crypto !== 'undefined' && crypto?.subtle?.digest) {
@@ -21,6 +16,7 @@ async function hashPassword(password: string): Promise<string> {
   return sha256JS(password);
 }
 
+// Pure-JS SHA-256 fallback for React Native environments without crypto.subtle
 function sha256JS(message: string): string {
   const H = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
@@ -36,17 +32,35 @@ function sha256JS(message: string): string {
     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
   ];
+
+  // Encode message as UTF-8 bytes
   const msgBytes: number[] = [];
   for (let i = 0; i < message.length; i++) {
     let code = message.charCodeAt(i);
-    if (code < 0x80) msgBytes.push(code);
-    else if (code < 0x800) msgBytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
-    else msgBytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    if (code < 0x80) {
+      msgBytes.push(code);
+    } else if (code < 0x800) {
+      msgBytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < message.length) {
+      const next = message.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        const codePoint = 0x10000 + ((code - 0xd800) << 10) + (next - 0xdc00);
+        msgBytes.push(
+          0xf0 | (codePoint >> 18), 0x80 | ((codePoint >> 12) & 0x3f),
+          0x80 | ((codePoint >> 6) & 0x3f), 0x80 | (codePoint & 0x3f),
+        );
+        i++;
+      }
+    } else {
+      msgBytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    }
   }
+
   const bitLen = msgBytes.length * 8;
   msgBytes.push(0x80);
   while (msgBytes.length % 64 !== 56) msgBytes.push(0);
   for (let i = 7; i >= 0; i--) msgBytes.push((bitLen / Math.pow(2, i * 8)) & 0xff);
+
   const words = new Uint32Array(64);
   for (let chunk = 0; chunk < msgBytes.length / 64; chunk++) {
     for (let i = 0; i < 16; i++) {
@@ -79,15 +93,24 @@ function sha256JS(message: string): string {
 
 interface AuthContextType {
   user: Profile | null;
-  erpRole: ErpRole;
+  currentRole: UserRole;
   isLoading: boolean;
   isLoggingIn: boolean;
   isAdmin: boolean;
   sessionToken: string | null;
-  hasErpRole: (min: ErpRole) => boolean;
   login: (email: string, password: string) => Promise<{ error: string | null }>;
-  register: (name: string, email: string, password: string) => Promise<{ error: string | null }>;
+  register: (
+    name: string,
+    email: string,
+    password: string,
+    isBuyer: boolean,
+    isSeller: boolean,
+    phone?: string,
+    shippingAddress?: string
+  ) => Promise<{ error: string | null }>;
   logout: () => void;
+  switchRole: (role: UserRole) => void;
+  canSwitchRoles: () => boolean;
   refreshUser: () => Promise<void>;
 }
 
@@ -95,6 +118,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null);
+  const [currentRole, setCurrentRole] = useState<UserRole>('buyer');
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -108,32 +132,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkSession = async () => {
     try {
-      const storedUser = await AsyncStorage.getItem('erp_user').catch(() => null);
-      const storedToken = await AsyncStorage.getItem('erp_session_token').catch(() => null);
+      let storedUser: string | null = null;
+      let storedRole: string | null = null;
+      let storedToken: string | null = null;
+      try {
+        storedUser = await AsyncStorage.getItem('auction_user');
+        storedRole = await AsyncStorage.getItem('auction_role');
+        storedToken = await AsyncStorage.getItem('auction_session_token');
+      } catch {}
 
       if (storedUser && storedToken) {
+        const parsedUser = JSON.parse(storedUser) as Profile;
+
         const { data: validatedUser } = await callRpc('rpc_validate_session', { p_token: storedToken });
         if (validatedUser) {
           setUser(validatedUser as Profile);
           setSessionToken(storedToken);
-          AsyncStorage.setItem('erp_user', JSON.stringify(validatedUser)).catch(() => {});
+          if (storedRole === 'seller' || storedRole === 'buyer') {
+            setCurrentRole(storedRole as UserRole);
+          } else {
+            setCurrentRole((validatedUser as Profile).is_seller ? 'seller' : 'buyer');
+          }
+          AsyncStorage.setItem('auction_user', JSON.stringify(validatedUser)).catch(() => {});
         } else {
-          AsyncStorage.removeItem('erp_user').catch(() => {});
-          AsyncStorage.removeItem('erp_session_token').catch(() => {});
+          // Token expired — clear session, require re-login
+          AsyncStorage.removeItem('auction_user').catch(() => {});
+          AsyncStorage.removeItem('auction_role').catch(() => {});
+          AsyncStorage.removeItem('auction_session_token').catch(() => {});
+          // Keep parsedUser to avoid flash but don't set token — they'll be redirected
+          setUser(parsedUser);
+          setCurrentRole(parsedUser.is_seller ? 'seller' : 'buyer');
         }
+        setIsLoading(false);
+      } else {
+        // No user or no token — clear any stale storage
+        if (storedUser || storedToken) {
+          AsyncStorage.removeItem('auction_user').catch(() => {});
+          AsyncStorage.removeItem('auction_role').catch(() => {});
+          AsyncStorage.removeItem('auction_session_token').catch(() => {});
+        }
+        setIsLoading(false);
       }
-    } catch {}
-    setIsLoading(false);
+    } catch (error) {
+      console.error('Session check error:', error);
+      try {
+        await AsyncStorage.removeItem('auction_user');
+        await AsyncStorage.removeItem('auction_role');
+        await AsyncStorage.removeItem('auction_session_token');
+      } catch {}
+      setIsLoading(false);
+    }
   };
 
   const refreshUser = useCallback(async () => {
-    if (!sessionToken) return;
-    const { data } = await callRpc('rpc_validate_session', { p_token: sessionToken });
-    if (data) {
-      setUser(data as Profile);
-      AsyncStorage.setItem('erp_user', JSON.stringify(data)).catch(() => {});
-    }
-  }, [sessionToken]);
+    if (!user) return;
+    try {
+      const { data: freshUser } = await supabase
+        .from('profiles')
+        .select('id, name, email, role, is_buyer, is_seller, is_admin, is_blocked, blocked_reason, blocked_at, warning_count, phone, phone_verified, phone_verified_at, payment_method, bank_account, shipping_address, created_at')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (freshUser) {
+        setUser(freshUser);
+        AsyncStorage.setItem('auction_user', JSON.stringify(freshUser)).catch(() => {});
+      }
+    } catch {}
+  }, [user]);
 
   const login = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
     setIsLoggingIn(true);
@@ -144,15 +208,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         p_password_hash: hashed,
         p_password_original: password,
       });
+
       if (rpcError) return { error: '登入失敗，請稍後再試' };
       if (data?.error) return { error: data.error };
 
       const matchedUser = data.user as Profile;
       const token = data.token as string;
+      const defaultRole: UserRole = matchedUser.is_seller ? 'seller' : 'buyer';
+
       setUser(matchedUser);
+      setCurrentRole(defaultRole);
       setSessionToken(token);
-      await AsyncStorage.setItem('erp_user', JSON.stringify(matchedUser)).catch(() => {});
-      await AsyncStorage.setItem('erp_session_token', token).catch(() => {});
+
+      try {
+        await AsyncStorage.setItem('auction_user', JSON.stringify(matchedUser));
+        await AsyncStorage.setItem('auction_role', defaultRole);
+        await AsyncStorage.setItem('auction_session_token', token);
+      } catch {}
+
       return { error: null };
     } catch {
       return { error: '登入失敗，請稍後再試' };
@@ -165,26 +238,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: string,
     email: string,
     password: string,
+    isBuyer: boolean,
+    isSeller: boolean,
+    phone?: string,
+    shippingAddress?: string
   ): Promise<{ error: string | null }> => {
     setIsLoggingIn(true);
     try {
-      const hashed = await hashPassword(password);
+      const hashedPassword = await hashPassword(password);
       const { data, error: rpcError } = await callRpc('rpc_register', {
         p_name: name.trim(),
         p_email: email.toLowerCase().trim(),
-        p_password_hash: hashed,
-        p_is_buyer: false,
-        p_is_seller: false,
+        p_password_hash: hashedPassword,
+        p_is_buyer: isBuyer,
+        p_is_seller: isSeller,
+        p_phone: phone ? phone.replace(/[\s\-()]/g, '') : null,
+        p_shipping_address: shippingAddress || null,
       });
+
       if (rpcError) return { error: '註冊失敗，請稍後再試' };
       if (data?.error) return { error: data.error };
 
       const newUser = data.user as Profile;
       const token = data.token as string;
+      const defaultRole: UserRole = isSeller ? 'seller' : 'buyer';
+
       setUser(newUser);
+      setCurrentRole(defaultRole);
       setSessionToken(token);
-      await AsyncStorage.setItem('erp_user', JSON.stringify(newUser)).catch(() => {});
-      await AsyncStorage.setItem('erp_session_token', token).catch(() => {});
+
+      try {
+        await AsyncStorage.setItem('auction_user', JSON.stringify(newUser));
+        await AsyncStorage.setItem('auction_role', defaultRole);
+        await AsyncStorage.setItem('auction_session_token', token);
+      } catch {}
+
       return { error: null };
     } catch {
       return { error: '註冊失敗，請稍後再試' };
@@ -194,25 +282,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    if (sessionToken) callRpc('rpc_logout', { p_token: sessionToken }).catch(() => {});
+    if (sessionToken) {
+      callRpc('rpc_logout', { p_token: sessionToken }).then(() => {}, () => {});
+    }
     setUser(null);
+    setCurrentRole('buyer');
     setSessionToken(null);
-    AsyncStorage.removeItem('erp_user').catch(() => {});
-    AsyncStorage.removeItem('erp_session_token').catch(() => {});
+    AsyncStorage.removeItem('auction_user').catch(() => {});
+    AsyncStorage.removeItem('auction_role').catch(() => {});
+    AsyncStorage.removeItem('auction_session_token').catch(() => {});
   }, [sessionToken]);
 
-  const erpRole: ErpRole = (user?.erp_role as ErpRole) ?? 'viewer';
-  const isAdmin = user?.is_admin === true || erpRole === 'admin';
-
-  const hasErpRole = useCallback((min: ErpRole): boolean => {
-    const current: ErpRole = user?.is_admin ? 'admin' : ((user?.erp_role as ErpRole) ?? 'viewer');
-    return (ERP_ROLE_LEVELS[current] ?? 0) >= ERP_ROLE_LEVELS[min];
+  const switchRole = useCallback((role: UserRole) => {
+    if (!user) return;
+    if (role === 'seller' && !user.is_seller) return;
+    if (role === 'buyer' && !user.is_buyer) return;
+    setCurrentRole(role);
+    AsyncStorage.setItem('auction_role', role).catch(() => {});
   }, [user]);
+
+  const canSwitchRoles = useCallback((): boolean => {
+    return user?.is_buyer === true && user?.is_seller === true;
+  }, [user]);
+
+  const isAdmin = user?.is_admin === true;
 
   return (
     <AuthContext.Provider value={{
-      user, erpRole, isLoading, isLoggingIn, isAdmin, sessionToken,
-      hasErpRole, login, register, logout, refreshUser,
+      user,
+      currentRole,
+      isLoading,
+      isLoggingIn,
+      isAdmin,
+      sessionToken,
+      login,
+      register,
+      logout,
+      switchRole,
+      canSwitchRoles,
+      refreshUser,
     }}>
       {children}
     </AuthContext.Provider>
@@ -221,6 +329,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return context;
 }

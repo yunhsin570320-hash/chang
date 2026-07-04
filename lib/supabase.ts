@@ -35,116 +35,178 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-export type ErpRole = 'admin' | 'manager' | 'operator' | 'viewer';
-
 export type Profile = {
   id: string;
   name: string;
   email?: string;
-  erp_role?: ErpRole;
+  role?: 'seller' | 'buyer';
+  is_buyer?: boolean;
+  is_seller?: boolean;
   is_admin?: boolean;
+  is_blocked?: boolean;
+  blocked_reason?: string;
+  blocked_at?: string;
+  warning_count?: number;
+  phone?: string;
+  phone_verified?: boolean;
+  phone_verified_at?: string;
+  payment_method?: string;
+  bank_account?: string;
+  shipping_address?: string;
   created_at: string;
 };
 
-export type RawMaterial = {
+export type Report = {
   id: string;
-  code: string;
+  reporter_id: string;
+  reported_user_id: string;
+  product_id?: string | null;
+  type: 'fake_product' | 'abandon_bid' | 'fraud' | 'spam' | 'other';
+  reason: string;
+  status: 'pending' | 'reviewed' | 'resolved' | 'dismissed';
+  resolved_by?: string | null;
+  resolved_at?: string | null;
+  admin_note?: string | null;
+  created_at: string;
+  reporter?: Profile;
+  reported_user?: Profile;
+  product?: Product;
+};
+
+export type AdminAction = {
+  id: string;
+  admin_id: string;
+  target_user_id?: string | null;
+  product_id?: string | null;
+  action_type: 'warn' | 'block' | 'unblock' | 'remove_product' | 'approve_product' | 'resolve_report' | 'dismiss_report';
+  reason: string;
+  created_at: string;
+  admin?: Profile;
+  target_user?: Profile;
+};
+
+export type Notification = {
+  id: string;
+  user_id: string;
+  type: 'won' | 'lost' | 'auction_ended' | 'new_bid';
+  title: string;
+  message: string;
+  product_id?: string | null;
+  is_read: boolean;
+  created_at: string;
+};
+
+export type Product = {
+  id: string;
   name: string;
-  unit: string;
-  safety_stock: number;
-  current_stock: number;
-  supplier?: string;
-  notes?: string;
+  description?: string;
+  image_url?: string;
+  seller_id: string;
+  end_time?: string;
+  status: 'active' | 'ended';
+  winner_id: string | null;
+  winning_amount: number | null;
+  is_flagged?: boolean;
+  flag_reason?: string | null;
+  is_approved?: boolean;
+  reserve_price?: number;
+  is_direct_buy?: boolean;
+  direct_price?: number | null;
+  stock_quantity?: number;
   created_at: string;
-  updated_at: string;
+  seller?: Profile;
+  winner?: Profile | null;
 };
 
-export type MaterialTransaction = {
-  id: string;
-  material_id: string;
-  type: 'receive' | 'consume' | 'adjust';
-  quantity: number;
-  reference?: string;
-  operator_id?: string;
-  notes?: string;
-  created_at: string;
-  operator?: Pick<Profile, 'id' | 'name'>;
-};
-
-export type ErpProduct = {
-  id: string;
-  code: string;
-  name: string;
-  unit: string;
-  specific_gravity: number;
-  drum_capacity_liters: number;
-  safety_stock: number;
-  current_stock: number;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-};
-
-export type ProductFormula = {
+export type Bid = {
   id: string;
   product_id: string;
-  material_id: string;
-  quantity_per_100kg: number;
-  notes?: string;
-  material?: RawMaterial;
-};
-
-export type ProductionOrder = {
-  id: string;
-  order_number: string;
-  product_id: string;
-  planned_quantity: number;
-  actual_quantity?: number;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-  operator_id?: string;
-  started_at?: string;
-  completed_at?: string;
-  notes?: string;
+  bidder_id: string;
+  amount: number;
   created_at: string;
-  created_by?: string;
-  product?: ErpProduct;
-  operator?: Pick<Profile, 'id' | 'name'>;
+  bidder?: Profile;
 };
 
-export type ProductionConsumption = {
-  id: string;
-  order_id: string;
-  material_id: string;
-  planned_quantity: number;
-  actual_quantity?: number;
-  material?: RawMaterial;
-};
+export async function uploadProductImage(source: string): Promise<string> {
+  if (!source) return '';
+  // Pass through remote URLs unchanged
+  if (!source.startsWith('data:') && !source.startsWith('file://') && !source.startsWith('content://')) {
+    return source;
+  }
 
-export type ErpShipment = {
-  id: string;
-  shipment_number: string;
-  product_id: string;
-  quantity_kg: number;
-  kg_per_drum?: number;
-  drums_count?: number;
-  customer: string;
-  destination?: string;
-  operator_id?: string;
-  shipped_at: string;
-  notes?: string;
-  created_at: string;
-  product?: ErpProduct;
-  operator?: Pick<Profile, 'id' | 'name'>;
-};
+  const path = `product-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-export type PurchaseAlert = {
-  id: string;
-  material_id: string;
-  triggered_at: string;
-  current_stock: number;
-  safety_stock: number;
-  is_resolved: boolean;
-  resolved_at?: string;
-  resolved_by?: string;
-  material?: RawMaterial;
-};
+  if (source.startsWith('data:')) {
+    // Decode base64 data URL — works on all browsers and React Native (atob is universal)
+    const commaIdx = source.indexOf(',');
+    const header = source.slice(0, commaIdx);
+    const base64Data = source.slice(commaIdx + 1);
+    const mime = header.match(/data:([^;]+)/)?.[1] ?? 'image/jpeg';
+    const ext = mime === 'image/png' ? 'png' : 'jpg';
+    const filename = `${path}.${ext}`;
+
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    const { error } = await supabase.storage
+      .from('product-images')
+      .upload(filename, bytes.buffer as ArrayBuffer, { contentType: mime, upsert: false });
+
+    if (error) throw new Error(`Storage upload failed: ${error.message}`);
+
+    const { data } = supabase.storage.from('product-images').getPublicUrl(filename);
+    return data.publicUrl;
+  }
+
+  // file:// or content:// URI (Expo native) — use FormData with direct REST upload
+  const uriExt = source.split('?')[0].split('.').pop()?.toLowerCase() ?? 'jpg';
+  const mime = uriExt === 'png' ? 'image/png' : 'image/jpeg';
+  const filename = `${path}.${uriExt === 'png' ? 'png' : 'jpg'}`;
+
+  const formData = new FormData();
+  formData.append('file', { uri: source, type: mime, name: filename } as any);
+
+  const res = await fetch(
+    `${supabaseUrl}/storage/v1/object/product-images/${filename}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        apikey: supabaseAnonKey,
+      },
+      body: formData,
+    }
+  );
+  if (!res.ok) {
+    const msg = await res.text().catch(() => res.status.toString());
+    throw new Error(`Storage upload failed: ${msg}`);
+  }
+  return `${supabaseUrl}/storage/v1/object/public/product-images/${filename}`;
+}
+
+export async function sendAuctionNotifications(
+  productId: string,
+  productName: string,
+  winnerId: string | null,
+  winningAmount: number | null,
+  allBidderIds: string[]
+) {
+  const notifications = allBidderIds.map(bidderId => {
+    const isWinner = bidderId === winnerId;
+    return {
+      user_id: bidderId,
+      product_id: productId,
+      type: (isWinner ? 'won' : 'lost') as 'won' | 'lost',
+      title: isWinner ? '恭喜您得標！' : '競標結果通知',
+      message: isWinner
+        ? `您以 NT$ ${(winningAmount || 0).toLocaleString()} 成功得標「${productName}」，請等候賣家聯繫交付事宜。`
+        : `很遺憾，您未能得標「${productName}」，感謝您的參與。`,
+      is_read: false,
+    };
+  });
+
+  if (notifications.length > 0) {
+    await supabase.from('notifications').insert(notifications);
+  }
+}
