@@ -14,6 +14,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Crown, User, Mail, Lock, Eye, EyeOff, Check, Phone, MapPin, ShieldCheck, FileText, X, ChevronRight } from 'lucide-react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { callRpc } from '../lib/supabase';
 
 function validateTWPhone(phone: string): boolean {
   const cleaned = phone.replace(/[\s\-()]/g, '');
@@ -38,9 +39,9 @@ export default function AuthPage() {
 
   // OTP state
   const [otpCode, setOtpCode] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
-  const [otpExpiry, setOtpExpiry] = useState<Date | null>(null);
   const [otpCountdown, setOtpCountdown] = useState(0);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -72,26 +73,44 @@ export default function AuthPage() {
     }
   };
 
-  const handleRequestOtp = () => {
+  const handleRequestOtp = async () => {
     setError(null);
     if (!name.trim()) { setError('請填寫姓名'); return; }
     if (!email.trim()) { setError('請填寫電子郵箱'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('請輸入有效的電子郵箱'); return; }
-    if (password.length < 4) { setError('密碼至少需要4個字元'); return; }
+    if (password.length < 8) { setError('密碼至少需要8個字元'); return; }
     if (password !== confirmPassword) { setError('密碼與確認密碼不符'); return; }
     if (!isBuyer && !isSeller) { setError('請至少選擇一種身份'); return; }
     if (!phone.trim()) { setError('請填寫聯絡電話'); return; }
     if (!validateTWPhone(phone)) { setError('請輸入有效的台灣手機號碼（格式：09xxxxxxxx）'); return; }
     if (!address.trim()) { setError('請填寫收貨地址'); return; }
 
-    // Generate 6-digit OTP (in real app this would be sent via SMS)
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    setGeneratedOtp(code);
-    setOtpExpiry(new Date(Date.now() + 10 * 60 * 1000));
-    setOtpCountdown(600);
-    setStep('otp');
-    setOtpCode('');
-    setError(null);
+    setOtpSending(true);
+    try {
+      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
+      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-sms-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ phone: cleanedPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || '驗證碼發送失敗，請稍後再試');
+        return;
+      }
+      setOtpCountdown(600);
+      setStep('otp');
+      setOtpCode('');
+      setError(null);
+    } catch {
+      setError('驗證碼發送失敗，請檢查網路連線');
+    } finally {
+      setOtpSending(false);
+    }
   };
 
   const handleVerifyAndRegister = async () => {
@@ -100,30 +119,62 @@ export default function AuthPage() {
       setError('請輸入6位驗證碼');
       return;
     }
-    if (otpCode !== generatedOtp) {
-      setError('驗證碼錯誤，請重新輸入');
-      return;
-    }
-    if (otpExpiry && new Date() > otpExpiry) {
-      setError('驗證碼已過期，請重新取得');
-      setStep('form');
-      return;
-    }
 
-    const cleanedPhone = phone.replace(/[\s\-()]/g, '');
-    const result = await register(name.trim(), email.trim(), password, isBuyer, isSeller, cleanedPhone, address.trim());
-    if (result.error) {
-      setError(result.error);
+    setOtpVerifying(true);
+    try {
+      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
+      const { data: verifyData, error: verifyErr } = await callRpc('rpc_verify_otp', {
+        p_phone: cleanedPhone,
+        p_code: otpCode,
+      });
+
+      if (verifyErr || !verifyData || verifyData.error) {
+        setError(verifyData?.error || '驗證碼驗證失敗');
+        return;
+      }
+      if (!verifyData.verified) {
+        setError('驗證失敗，請重試');
+        return;
+      }
+
+      const result = await register(name.trim(), email.trim(), password, isBuyer, isSeller, cleanedPhone, address.trim());
+      if (result.error) {
+        setError(result.error);
+      }
+    } catch {
+      setError('驗證失敗，請稍後再試');
+    } finally {
+      setOtpVerifying(false);
     }
   };
 
-  const handleResendOtp = () => {
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    setGeneratedOtp(code);
-    setOtpExpiry(new Date(Date.now() + 10 * 60 * 1000));
-    setOtpCountdown(600);
-    setOtpCode('');
+  const handleResendOtp = async () => {
     setError(null);
+    setOtpSending(true);
+    try {
+      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
+      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-sms-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ phone: cleanedPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || '重新發送失敗');
+        return;
+      }
+      setOtpCountdown(600);
+      setOtpCode('');
+      setError(null);
+    } catch {
+      setError('重新發送失敗，請稍後再試');
+    } finally {
+      setOtpSending(false);
+    }
   };
 
   const formatCountdown = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -211,7 +262,7 @@ export default function AuthPage() {
                 <Text style={styles.inputLabel}>密碼 *</Text>
                 <View style={styles.inputRow}>
                   <Lock size={20} color="#666" />
-                  <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="至少4個字元" placeholderTextColor="#444" secureTextEntry={!showPassword} autoCapitalize="none" />
+                  <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="至少8個字元" placeholderTextColor="#444" secureTextEntry={!showPassword} autoCapitalize="none" />
                   <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                     {showPassword ? <EyeOff size={20} color="#666" /> : <Eye size={20} color="#666" />}
                   </TouchableOpacity>
@@ -287,15 +338,9 @@ export default function AuthPage() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.otpInfoTitle}>手機號碼驗證</Text>
                   <Text style={styles.otpInfoText}>
-                    驗證碼已傳送至 {phone}（模擬）
+                    驗證碼已傳送簡訊至 {phone}
                   </Text>
                 </View>
-              </View>
-
-              {/* Demo: show the code */}
-              <View style={styles.demoOtpBox}>
-                <Text style={styles.demoOtpLabel}>測試用驗證碼（實際上會發送簡訊）</Text>
-                <Text style={styles.demoOtpCode}>{generatedOtp}</Text>
               </View>
 
               <View style={styles.inputGroup}>
@@ -321,8 +366,8 @@ export default function AuthPage() {
                 ) : (
                   <Text style={styles.expiredText}>驗證碼已過期</Text>
                 )}
-                <TouchableOpacity onPress={handleResendOtp}>
-                  <Text style={styles.resendText}>重新取得</Text>
+                <TouchableOpacity onPress={handleResendOtp} disabled={otpSending}>
+                  <Text style={[styles.resendText, otpSending && { opacity: 0.5 }]}>{otpSending ? '發送中...' : '重新取得'}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -342,11 +387,11 @@ export default function AuthPage() {
           )}
 
           <TouchableOpacity
-            style={[styles.submitButton, isLoggingIn && styles.disabled]}
+            style={[styles.submitButton, (isLoggingIn || otpSending || otpVerifying) && styles.disabled]}
             onPress={isLogin ? handleLogin : step === 'form' ? handleRequestOtp : handleVerifyAndRegister}
-            disabled={isLoggingIn}
+            disabled={isLoggingIn || otpSending || otpVerifying}
           >
-            {isLoggingIn ? (
+            {(isLoggingIn || otpSending || otpVerifying) ? (
               <ActivityIndicator color="#000" />
             ) : (
               <Text style={styles.submitButtonText}>
@@ -365,12 +410,6 @@ export default function AuthPage() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
-
-        <View style={styles.demoAccounts}>
-          <Text style={styles.demoTitle}>測試帳號</Text>
-          <Text style={styles.demoText}>賣家: seller1@test.com</Text>
-          <Text style={styles.demoText}>買家: buyer1@test.com</Text>
         </View>
 
         <TouchableOpacity style={styles.termsButton} onPress={() => setShowTerms(true)}>
@@ -563,14 +602,6 @@ const styles = StyleSheet.create({
   },
   otpInfoTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 2 },
   otpInfoText: { color: '#888', fontSize: 13 },
-  demoOtpBox: {
-    backgroundColor: 'rgba(255, 215, 0, 0.1)',
-    borderRadius: 10, padding: 14,
-    borderWidth: 1, borderColor: 'rgba(255, 215, 0, 0.3)',
-    alignItems: 'center', marginBottom: 20,
-  },
-  demoOtpLabel: { color: '#888', fontSize: 12, marginBottom: 6 },
-  demoOtpCode: { color: '#FFD700', fontSize: 32, fontWeight: '800', letterSpacing: 8 },
   otpActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   countdownText: { color: '#888', fontSize: 13 },
   expiredText: { color: '#FF6B6B', fontSize: 13, fontWeight: '600' },
@@ -593,13 +624,6 @@ const styles = StyleSheet.create({
   switchMode: { flexDirection: 'row', justifyContent: 'center', marginTop: 20, gap: 4 },
   switchModeText: { color: '#888', fontSize: 14 },
   switchModeLink: { color: '#00D4AA', fontSize: 14, fontWeight: '600' },
-  demoAccounts: {
-    backgroundColor: 'rgba(255, 215, 0, 0.1)',
-    borderRadius: 12, padding: 16,
-    borderWidth: 1, borderColor: 'rgba(255, 215, 0, 0.2)',
-  },
-  demoTitle: { color: '#FFD700', fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  demoText: { color: '#888', fontSize: 12, marginBottom: 4 },
   termsButton: {
     flexDirection: 'row',
     alignItems: 'center',

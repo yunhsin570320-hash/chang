@@ -23,6 +23,9 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_seller_update_delivery",
   "rpc_admin_action",
   "rpc_file_report",
+  "rpc_direct_buy",
+  "rpc_place_bid",
+  "rpc_verify_otp",
 ]);
 
 Deno.serve(async (req: Request) => {
