@@ -30,6 +30,11 @@ interface DeliveryInfo {
   is_direct_buy: boolean;
   created_at: string;
   updated_at: string;
+  payment_status?: 'unpaid' | 'paid' | 'confirmed';
+  payment_method_chosen?: string;
+  payment_reference?: string;
+  payment_marked_at?: string;
+  payment_confirmed_at?: string;
 }
 
 export default function DeliveryPage() {
@@ -45,6 +50,7 @@ export default function DeliveryPage() {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [updating, setUpdating] = useState(false);
+  const [paymentUpdating, setPaymentUpdating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -180,6 +186,62 @@ export default function DeliveryPage() {
     }
   };
 
+  const getPaymentStatusText = (status: string) => {
+    switch (status) {
+      case 'unpaid': return '待付款';
+      case 'paid': return '已標記付款';
+      case 'confirmed': return '付款已確認';
+      default: return '待付款';
+    }
+  };
+
+  const getPaymentColor = (status: string) => {
+    switch (status) {
+      case 'unpaid': return '#FF6B6B';
+      case 'paid': return '#FFD700';
+      case 'confirmed': return '#10B981';
+      default: return '#FF6B6B';
+    }
+  };
+
+  const handleMarkPaid = async () => {
+    if (!delivery || !sessionToken) return;
+    setPaymentUpdating(true);
+    try {
+      const { data, error } = await callRpc('rpc_buyer_mark_paid', {
+        p_token: sessionToken,
+        p_delivery_id: delivery.id,
+        p_method: user?.payment_method || null,
+        p_reference: null,
+      });
+      if (error || data?.error) throw error || new Error(data?.error);
+      setDelivery({ ...delivery, payment_status: 'paid', payment_marked_at: new Date().toISOString() });
+      Alert.alert('成功', '已通知賣家您已完成付款');
+    } catch {
+      Alert.alert('錯誤', '標記付款失敗');
+    } finally {
+      setPaymentUpdating(false);
+    }
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!delivery || !sessionToken) return;
+    setPaymentUpdating(true);
+    try {
+      const { data, error } = await callRpc('rpc_seller_confirm_payment', {
+        p_token: sessionToken,
+        p_delivery_id: delivery.id,
+      });
+      if (error || data?.error) throw error || new Error(data?.error);
+      setDelivery({ ...delivery, payment_status: 'confirmed', payment_confirmed_at: new Date().toISOString() });
+      Alert.alert('成功', '已確認收到款項');
+    } catch {
+      Alert.alert('錯誤', '確認付款失敗');
+    } finally {
+      setPaymentUpdating(false);
+    }
+  };
+
   const getStatusText = (status: DeliveryInfo['status']) => {
     switch (status) {
       case 'pending': return '待出貨';
@@ -295,6 +357,74 @@ export default function DeliveryPage() {
               <Text style={[styles.infoValue, { flexWrap: 'wrap' }]}>{buyer.shipping_address || '未提供'}</Text>
             </View>
           </View>
+        </View>
+
+        {/* Payment Status */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>付款狀態</Text>
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <CreditCard size={20} color={getPaymentColor(delivery.payment_status || 'unpaid')} />
+              <Text style={styles.infoLabel}>狀態</Text>
+              <Text style={[styles.infoValue, { color: getPaymentColor(delivery.payment_status || 'unpaid'), fontWeight: '700' }]}>
+                {getPaymentStatusText(delivery.payment_status || 'unpaid')}
+              </Text>
+            </View>
+            {delivery.payment_method_chosen && (
+              <View style={styles.infoRow}>
+                <Banknote size={20} color="#00D4AA" />
+                <Text style={styles.infoLabel}>付款方式</Text>
+                <Text style={styles.infoValue}>{delivery.payment_method_chosen}</Text>
+              </View>
+            )}
+            {delivery.payment_reference && (
+              <View style={styles.infoRow}>
+                <CreditCard size={20} color="#00D4AA" />
+                <Text style={styles.infoLabel}>付款參考</Text>
+                <Text style={styles.infoValue}>{delivery.payment_reference}</Text>
+              </View>
+            )}
+            {delivery.payment_marked_at && (
+              <View style={styles.infoRow}>
+                <Check size={20} color="#FFD700" />
+                <Text style={styles.infoLabel}>標記時間</Text>
+                <Text style={styles.infoValue}>{new Date(delivery.payment_marked_at).toLocaleString('zh-TW')}</Text>
+              </View>
+            )}
+            {delivery.payment_confirmed_at && (
+              <View style={styles.infoRow}>
+                <Check size={20} color="#10B981" />
+                <Text style={styles.infoLabel}>確認時間</Text>
+                <Text style={styles.infoValue}>{new Date(delivery.payment_confirmed_at).toLocaleString('zh-TW')}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Buyer: mark payment as made */}
+          {!isSeller && (delivery.payment_status || 'unpaid') === 'unpaid' && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleMarkPaid}
+              disabled={paymentUpdating}
+            >
+              {paymentUpdating ? <ActivityIndicator color="#000" /> : (
+                <><Banknote size={20} color="#000" /><Text style={styles.actionButtonText}>我已付款</Text></>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Seller: confirm payment */}
+          {isSeller && delivery.payment_status === 'paid' && (
+            <TouchableOpacity
+              style={styles.actionButtonSuccess}
+              onPress={handleConfirmPayment}
+              disabled={paymentUpdating}
+            >
+              {paymentUpdating ? <ActivityIndicator color="#000" /> : (
+                <><Check size={20} color="#000" /><Text style={styles.actionButtonText}>確認收到款項</Text></>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Delivery Status */}
