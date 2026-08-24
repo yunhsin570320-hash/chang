@@ -12,7 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Crown, User, Mail, Lock, Eye, EyeOff, Check, Phone, MapPin, ShieldCheck, FileText, X, ChevronRight } from 'lucide-react-native';
+import { Crown, User, Mail, Lock, Eye, EyeOff, Check, Phone, MapPin, ShieldCheck, FileText, X, ChevronRight, KeyRound, ArrowLeft } from 'lucide-react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { callRpc } from '../lib/supabase';
 
@@ -25,6 +25,17 @@ export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [showTerms, setShowTerms] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'identify' | 'otp' | 'reset'>('identify');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotPhone, setForgotPhone] = useState('');
+  const [forgotToken, setForgotToken] = useState<string | null>(null);
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotShowPassword, setForgotShowPassword] = useState(false);
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
 
   // Form fields
   const [name, setName] = useState('');
@@ -179,6 +190,147 @@ export default function AuthPage() {
 
   const formatCountdown = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+  const handleForgotRequest = async () => {
+    setError(null);
+    if (!forgotEmail.trim()) { setError('請輸入註冊時的郵箱'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail.trim())) { setError('請輸入有效的電子郵箱'); return; }
+    if (!validateTWPhone(forgotPhone)) { setError('請輸入有效的台灣手機號碼'); return; }
+
+    setForgotSubmitting(true);
+    try {
+      const { data, error: rpcErr } = await callRpc('rpc_request_password_reset', {
+        p_email: forgotEmail.trim().toLowerCase(),
+        p_phone: forgotPhone.replace(/[\s\-()]/g, ''),
+      });
+      if (rpcErr || data?.error) {
+        setError(data?.error || '申請失敗，請稍後再試');
+        return;
+      }
+      setForgotToken(data.reset_token);
+
+      // Send OTP to the phone
+      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-sms-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ phone: forgotPhone.replace(/[\s\-()]/g, '') }),
+      });
+      const otpData = await res.json();
+      if (!res.ok || otpData.error) {
+        setError(otpData.error || '驗證碼發送失敗');
+        return;
+      }
+      setOtpCountdown(600);
+      setForgotStep('otp');
+      setForgotOtp('');
+    } catch {
+      setError('申請失敗，請檢查網路連線');
+    } finally {
+      setForgotSubmitting(false);
+    }
+  };
+
+  const handleForgotVerifyOtp = async () => {
+    setError(null);
+    if (forgotOtp.length !== 6) { setError('請輸入6位驗證碼'); return; }
+
+    setForgotSubmitting(true);
+    try {
+      const { data, error: rpcErr } = await callRpc('rpc_verify_otp', {
+        p_phone: forgotPhone.replace(/[\s\-()]/g, ''),
+        p_code: forgotOtp,
+      });
+      if (rpcErr || !data || data.error || !data.verified) {
+        setError(data?.error || '驗證碼錯誤');
+        return;
+      }
+      setForgotStep('reset');
+    } catch {
+      setError('驗證失敗，請稍後再試');
+    } finally {
+      setForgotSubmitting(false);
+    }
+  };
+
+  const handleForgotResetPassword = async () => {
+    setError(null);
+    if (forgotNewPassword.length < 8) { setError('新密碼至少需要8個字元'); return; }
+    if (forgotNewPassword !== forgotConfirmPassword) { setError('兩次輸入的密碼不一致'); return; }
+    if (!forgotToken) { setError('重設資料已過期，請重新申請'); return; }
+
+    setForgotSubmitting(true);
+    try {
+      const { data, error: rpcErr } = await callRpc('rpc_reset_password', {
+        p_reset_token: forgotToken,
+        p_new_password: forgotNewPassword,
+      });
+      if (rpcErr || data?.error) {
+        setError(data?.error || '重設失敗，請稍後再試');
+        return;
+      }
+      setForgotSuccess(true);
+      setTimeout(() => {
+        setForgotPassword(false);
+        setForgotSuccess(false);
+        setForgotStep('identify');
+        setForgotEmail('');
+        setForgotPhone('');
+        setForgotToken(null);
+        setForgotOtp('');
+        setForgotNewPassword('');
+        setForgotConfirmPassword('');
+        setIsLogin(true);
+        setError(null);
+      }, 2500);
+    } catch {
+      setError('重設失敗，請稍後再試');
+    } finally {
+      setForgotSubmitting(false);
+    }
+  };
+
+  const handleForgotResendOtp = async () => {
+    setError(null);
+    setForgotSubmitting(true);
+    try {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-sms-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ phone: forgotPhone.replace(/[\s\-()]/g, '') }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || '重新發送失敗');
+        return;
+      }
+      setOtpCountdown(600);
+      setForgotOtp('');
+    } catch {
+      setError('重新發送失敗');
+    } finally {
+      setForgotSubmitting(false);
+    }
+  };
+
+  const resetForgotPassword = () => {
+    setForgotPassword(false);
+    setForgotStep('identify');
+    setForgotEmail('');
+    setForgotPhone('');
+    setForgotToken(null);
+    setForgotOtp('');
+    setForgotNewPassword('');
+    setForgotConfirmPassword('');
+    setError(null);
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -190,10 +342,18 @@ export default function AuthPage() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
+          {forgotPassword ? (
+            <TouchableOpacity style={styles.backToLogin} onPress={resetForgotPassword}>
+              <ArrowLeft size={20} color="#888" />
+              <Text style={styles.backToLoginText}>返回登入</Text>
+            </TouchableOpacity>
+          ) : null}
           <Crown size={56} color="#00D4AA" />
           <Text style={styles.title}>暗標競標會</Text>
           <Text style={styles.subtitle}>
-            {isLogin ? '登入您的帳戶' : step === 'otp' ? '驗證手機號碼' : '註冊新帳戶'}
+            {forgotPassword
+              ? forgotSuccess ? '密碼已重設' : forgotStep === 'identify' ? '忘記密碼' : forgotStep === 'otp' ? '驗證手機號碼' : '設定新密碼'
+              : isLogin ? '登入您的帳戶' : step === 'otp' ? '驗證手機號碼' : '註冊新帳戶'}
           </Text>
         </View>
 
@@ -386,30 +546,196 @@ export default function AuthPage() {
             </View>
           )}
 
-          <TouchableOpacity
-            style={[styles.submitButton, (isLoggingIn || otpSending || otpVerifying) && styles.disabled]}
-            onPress={isLogin ? handleLogin : step === 'form' ? handleRequestOtp : handleVerifyAndRegister}
-            disabled={isLoggingIn || otpSending || otpVerifying}
-          >
-            {(isLoggingIn || otpSending || otpVerifying) ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.submitButtonText}>
-                {isLogin ? '登入' : step === 'form' ? '取得驗證碼' : '完成註冊'}
-              </Text>
-            )}
-          </TouchableOpacity>
+          {forgotPassword ? (
+            <>
+              {forgotSuccess ? (
+                <View style={styles.forgotSuccessBox}>
+                  <Check size={40} color="#00D4AA" />
+                  <Text style={styles.forgotSuccessText}>密碼重設成功！</Text>
+                  <Text style={styles.forgotSuccessSub}>即將返回登入頁面，請使用新密碼登入。</Text>
+                </View>
+              ) : forgotStep === 'identify' ? (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>註冊時的電子郵箱 *</Text>
+                    <View style={styles.inputRow}>
+                      <Mail size={20} color="#666" />
+                      <TextInput
+                        style={styles.input}
+                        value={forgotEmail}
+                        onChangeText={setForgotEmail}
+                        placeholder="example@email.com"
+                        placeholderTextColor="#444"
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    </View>
+                  </View>
 
-          <View style={styles.switchMode}>
-            <Text style={styles.switchModeText}>
-              {isLogin ? '還沒有帳戶？' : '已有帳戶？'}
-            </Text>
-            <TouchableOpacity onPress={() => { setIsLogin(!isLogin); setStep('form'); setError(null); }}>
-              <Text style={styles.switchModeLink}>
-                {isLogin ? '立即註冊' : '前往登入'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>註冊時的手機號碼 *</Text>
+                    <View style={styles.inputRow}>
+                      <Phone size={20} color="#666" />
+                      <TextInput
+                        style={styles.input}
+                        value={forgotPhone}
+                        onChangeText={setForgotPhone}
+                        placeholder="09xxxxxxxx"
+                        placeholderTextColor="#444"
+                        keyboardType="phone-pad"
+                        maxLength={10}
+                      />
+                      {validateTWPhone(forgotPhone) && <Check size={18} color="#00D4AA" />}
+                    </View>
+                    {forgotPhone.length > 0 && !validateTWPhone(forgotPhone) && (
+                      <Text style={styles.fieldError}>格式：09xxxxxxxx（10位數字）</Text>
+                    )}
+                  </View>
+
+                  <Text style={styles.forgotHint}>系統將發送驗證碼到您的手機，驗證後可設定新密碼。</Text>
+
+n                  <TouchableOpacity
+                    style={[styles.submitButton, forgotSubmitting && styles.disabled]}
+                    onPress={handleForgotRequest}
+                    disabled={forgotSubmitting}
+                  >
+                    {forgotSubmitting ? <ActivityIndicator color="#000" /> : (
+                      <Text style={styles.submitButtonText}>發送驗證碼</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : forgotStep === 'otp' ? (
+                <>
+                  <View style={styles.otpInfoBox}>
+                    <ShieldCheck size={28} color="#00D4AA" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.otpInfoTitle}>手機號碼驗證</Text>
+                      <Text style={styles.otpInfoText}>驗證碼已傳送至 {forgotPhone}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>輸入6位驗證碼 *</Text>
+                    <View style={styles.inputRow}>
+                      <ShieldCheck size={20} color="#666" />
+                      <TextInput
+                        style={[styles.input, styles.otpInput]}
+                        value={forgotOtp}
+                        onChangeText={v => setForgotOtp(v.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="______"
+                        placeholderTextColor="#444"
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        autoFocus
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.otpActions}>
+                    {otpCountdown > 0 ? (
+                      <Text style={styles.countdownText}>驗證碼將於 {formatCountdown(otpCountdown)} 後過期</Text>
+                    ) : (
+                      <Text style={styles.expiredText}>驗證碼已過期</Text>
+                    )}
+                    <TouchableOpacity onPress={handleForgotResendOtp} disabled={forgotSubmitting}>
+                      <Text style={[styles.resendText, forgotSubmitting && { opacity: 0.5 }]}>{forgotSubmitting ? '發送中...' : '重新取得'}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.submitButton, forgotSubmitting && styles.disabled]}
+                    onPress={handleForgotVerifyOtp}
+                    disabled={forgotSubmitting}
+                  >
+                    {forgotSubmitting ? <ActivityIndicator color="#000" /> : (
+                      <Text style={styles.submitButtonText}>驗證</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>設定新密碼 *</Text>
+                    <View style={styles.inputRow}>
+                      <KeyRound size={20} color="#666" />
+                      <TextInput
+                        style={styles.input}
+                        value={forgotNewPassword}
+                        onChangeText={setForgotNewPassword}
+                        placeholder="至少8個字元"
+                        placeholderTextColor="#444"
+                        secureTextEntry={!forgotShowPassword}
+                        autoCapitalize="none"
+                      />
+                      <TouchableOpacity onPress={() => setForgotShowPassword(!forgotShowPassword)}>
+                        {forgotShowPassword ? <EyeOff size={20} color="#666" /> : <Eye size={20} color="#666" />}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>確認新密碼 *</Text>
+                    <View style={styles.inputRow}>
+                      <KeyRound size={20} color="#666" />
+                      <TextInput
+                        style={styles.input}
+                        value={forgotConfirmPassword}
+                        onChangeText={setForgotConfirmPassword}
+                        placeholder="請再輸入一次新密碼"
+                        placeholderTextColor="#444"
+                        secureTextEntry={!forgotShowPassword}
+                        autoCapitalize="none"
+                      />
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.submitButton, forgotSubmitting && styles.disabled]}
+                    onPress={handleForgotResetPassword}
+                    disabled={forgotSubmitting}
+                  >
+                    {forgotSubmitting ? <ActivityIndicator color="#000" /> : (
+                      <Text style={styles.submitButtonText}>重設密碼</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={[styles.submitButton, (isLoggingIn || otpSending || otpVerifying) && styles.disabled]}
+                onPress={isLogin ? handleLogin : step === 'form' ? handleRequestOtp : handleVerifyAndRegister}
+                disabled={isLoggingIn || otpSending || otpVerifying}
+              >
+                {(isLoggingIn || otpSending || otpVerifying) ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.submitButtonText}>
+                    {isLogin ? '登入' : step === 'form' ? '取得驗證碼' : '完成註冊'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.switchMode}>
+                <Text style={styles.switchModeText}>
+                  {isLogin ? '還沒有帳戶？' : '已有帳戶？'}
+                </Text>
+                <TouchableOpacity onPress={() => { setIsLogin(!isLogin); setStep('form'); setError(null); }}>
+                  <Text style={styles.switchModeLink}>
+                    {isLogin ? '立即註冊' : '前往登入'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {isLogin && (
+                <TouchableOpacity style={styles.forgotLink} onPress={() => { setForgotPassword(true); setError(null); }}>
+                  <Text style={styles.forgotLinkText}>忘記密碼？</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
         </View>
 
         <TouchableOpacity style={styles.termsButton} onPress={() => setShowTerms(true)}>
@@ -633,6 +959,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   termsButtonText: { color: '#555', fontSize: 13 },
+  forgotLink: { alignItems: 'center', marginTop: 16 },
+  forgotLinkText: { color: '#FFD700', fontSize: 14, fontWeight: '600' },
+  forgotHint: { color: '#666', fontSize: 12, lineHeight: 18, marginBottom: 16, marginTop: -8 },
+  forgotSuccessBox: { alignItems: 'center', paddingVertical: 40 },
+  forgotSuccessText: { color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 12 },
+  forgotSuccessSub: { color: '#aaa', fontSize: 14, marginTop: 8, textAlign: 'center' },
+  backToLogin: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 16 },
+  backToLoginText: { color: '#888', fontSize: 14 },
   // Modal
   modalOverlay: {
     flex: 1,
