@@ -172,7 +172,7 @@ export default function AdminPage() {
       if (tab === 'members') {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, name, email, is_admin, is_blocked, is_buyer, is_seller, phone, phone_verified, warning_count, blocked_reason, created_at, membership_tier, membership_number, is_lifetime, vip_upgrade_paid, vip_deposit_paid, last_seen_at')
+          .select('id, name, email, is_admin, is_blocked, is_buyer, is_seller, phone, phone_verified, warning_count, blocked_reason, created_at, membership_tier, membership_number, is_lifetime, vip_upgrade_paid, vip_deposit_paid')
           .order('created_at', { ascending: false });
         if (error) throw error;
         setMembers((data || []).filter((u: any) => !u.is_admin));
@@ -451,9 +451,6 @@ export default function AdminPage() {
                       {m.is_lifetime ? '終身' : '付費'}#{m.membership_number ?? ''}
                     </Text>
                   </View>
-                )}
-                {m.last_seen_at && new Date(m.last_seen_at).getTime() > Date.now() - 5 * 60 * 1000 && (
-                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#00D4AA', marginLeft: 2 }} />
                 )}
               </View>
               <Text style={styles.memberEmail}>{m.email}</Text>
