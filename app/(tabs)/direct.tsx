@@ -16,7 +16,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { ShoppingCart, Tag, Users, Check, X, ShoppingBag, Minus, Plus } from 'lucide-react-native';
-import { supabase, Product } from '../../lib/supabase';
+import { supabase, callRpc, Product } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 type DirectProduct = Product;
@@ -35,7 +35,7 @@ export default function DirectHall() {
   const [buySuccess, setBuySuccess] = useState(false);
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const { user } = useAuth();
+  const { user, sessionToken } = useAuth();
 
   const COLUMNS = width >= 768 ? 3 : 2;
   const CARD_WIDTH = (width - 16 * 2 - 10 * (COLUMNS - 1)) / COLUMNS;
@@ -120,38 +120,20 @@ export default function DirectHall() {
     setBuying(true);
     setBuyError(null);
     try {
-      const totalAmount = (confirmProduct.direct_price || 0) * qty;
-      const newStock = maxStock - qty;
-      const isSoldOut = newStock <= 0;
-
-      const { error } = await supabase
-        .from('products')
-        .update({
-          stock_quantity: newStock,
-          ...(isSoldOut ? {
-            status: 'ended',
-            winner_id: user.id,
-            winning_amount: totalAmount,
-          } : {}),
-        })
-        .eq('id', confirmProduct.id)
-        .eq('status', 'active');
-
-      if (error) throw error;
-
-      await supabase.from('notifications').insert({
-        user_id: user.id,
-        product_id: confirmProduct.id,
-        type: 'won',
-        title: '直購成功！',
-        message: `您已成功購買「${confirmProduct.name}」× ${qty} 件，金額 NT$ ${totalAmount.toLocaleString()}，請等候賣家聯繫交付事宜。`,
-        is_read: false,
+      const { data, error } = await callRpc('rpc_direct_buy', {
+        p_token: sessionToken,
+        p_product_id: confirmProduct.id,
+        p_quantity: qty,
       });
+
+      if (error || data?.error) {
+        throw new Error(error?.message || data?.error || '購買失敗');
+      }
 
       setBuySuccess(true);
       fetchProducts();
-    } catch (err) {
-      setBuyError('購買失敗，商品可能已售出，請重新整理');
+    } catch (err: any) {
+      setBuyError(err?.message || '購買失敗，商品可能已售出，請重新整理');
       console.warn(err);
     } finally {
       setBuying(false);
