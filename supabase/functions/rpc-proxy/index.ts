@@ -88,6 +88,8 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_submit_payment_request",
   "rpc_get_my_payment_requests",
   "rpc_admin_review_payment_request",
+  "rpc_get_site_settings",
+  "rpc_admin_update_site_setting",
 ]);
 
 Deno.serve(async (req: Request) => {

@@ -111,16 +111,14 @@ export default function ProfilePage() {
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }),
-        supabase.from('site_settings').select('key, value'),
+        callRpc('rpc_get_site_settings').then(({ data }) => data?.settings as Record<string, string> || {}),
         getMemberStats(),
       ]);
       setMyBids(bidsResult.data || []);
       setNotifications(notifResult.data || []);
       setPaymentRequests((paymentResult.data || []) as PaymentRequest[]);
-      if (settingsResult.data) {
-        const map: Record<string, string> = {};
-        for (const row of settingsResult.data as any[]) map[row.key] = row.value;
-        setSiteSettings(map);
+      if (settingsResult) {
+        setSiteSettings(settingsResult as Record<string, string>);
       }
       if (statsResult) setMemberStats(statsResult);
     } catch (error) {

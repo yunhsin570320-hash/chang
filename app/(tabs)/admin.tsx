@@ -181,10 +181,8 @@ export default function AdminPage() {
         const payList = await getAdminPaymentRequests(sessionToken);
         setPaymentRequests(payList as any);
       } else if (tab === 'settings') {
-        const { data, error } = await supabase.from('site_settings').select('key, value');
-        if (error) throw error;
-        const map: Record<string, string> = {};
-        for (const row of (data || []) as any[]) map[row.key] = row.value;
+        const { data: settingsData } = await callRpc('rpc_get_site_settings');
+        const map: Record<string, string> = (settingsData?.settings as Record<string, string>) || {};
         setSiteSettings(map);
         setEditBankName(map.payment_bank_name || '');
         setEditAccount(map.payment_account || '');
