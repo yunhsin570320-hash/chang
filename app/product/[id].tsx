@@ -205,20 +205,21 @@ export default function ProductDetail() {
   };
 
   const handlePlaceBid = async () => {
-    if (!user) {
-      return;
-    }
-
-    if (!product || product.status !== 'active') {
-      return;
-    }
+    if (!user || !product || product.status !== 'active') return;
 
     if (user.is_blocked) {
+      setBidError(`帳號已鎖定：${user.lock_reason || user.blocked_reason || '違反平台規範'}`);
+      return;
+    }
+
+    if (!user.vip_deposit_paid) {
+      setBidError('參與競標需繳納保證金 NT$1000。請至「我的」頁面升級。');
       return;
     }
 
     const amount = parseInt(bidAmount, 10);
     if (isNaN(amount) || amount <= 0) {
+      setBidError('請輸入有效的出價金額');
       return;
     }
 
@@ -231,24 +232,24 @@ export default function ProductDetail() {
     setBidError(null);
     setSubmitting(true);
     try {
-      const { error } = await supabase
-        .from('bids')
-        .insert({
-          product_id: id,
-          bidder_id: user.id,
-          amount: amount,
-        });
+      const { data, error } = await callRpc('rpc_place_bid_v2', {
+        p_token: sessionToken,
+        p_product_id: id,
+        p_amount: amount,
+      });
 
       if (error) {
-        if (error.code === '23505') {
-          return;
-        }
-        throw error;
+        setBidError('競標失敗，請稍後再試');
+        return;
+      }
+      if (data?.error) {
+        setBidError(data.error);
+        return;
       }
 
       fetchData();
-    } catch (error) {
-      console.error('Error placing bid:', error);
+    } catch {
+      setBidError('競標失敗，請稍後再試');
     } finally {
       setSubmitting(false);
     }
@@ -876,7 +877,29 @@ export default function ProductDetail() {
             </View>
           )}
 
-          {product.status === 'active' && !isDirectBuy && user && currentRole === 'buyer' && !isSeller && !myBid && (
+          {product.status === 'active' && !isDirectBuy && user && currentRole === 'buyer' && !isSeller && !myBid && user.is_blocked && (
+            <View style={styles.section}>
+              <View style={styles.bidForm}>
+                <View style={[styles.blindNotice, { borderBottomColor: 'rgba(255,107,107,0.3)' }]}>
+                  <Text style={[styles.blindText, { color: '#FF6B6B' }]}>帳號已鎖定，無法競標</Text>
+                </View>
+                <Text style={styles.bidWarning}>{user.lock_reason || user.blocked_reason || '違反平台規範'}</Text>
+              </View>
+            </View>
+          )}
+
+          {product.status === 'active' && !isDirectBuy && user && currentRole === 'buyer' && !isSeller && !myBid && !user.is_blocked && !user.vip_deposit_paid && (
+            <View style={styles.section}>
+              <View style={styles.bidForm}>
+                <View style={[styles.blindNotice, { borderBottomColor: 'rgba(255,215,0,0.3)' }]}>
+                  <Text style={[styles.blindText, { color: '#FFD700' }]}>需繳納競標保證金</Text>
+                </View>
+                <Text style={styles.bidWarning}>參與競標需先繳納保證金 NT$1000。請至「我的」頁面升級。</Text>
+              </View>
+            </View>
+          )}
+
+          {product.status === 'active' && !isDirectBuy && user && currentRole === 'buyer' && !isSeller && !myBid && !user.is_blocked && user.vip_deposit_paid && (
             <View style={styles.section}>
               <View style={styles.bidForm}>
                 <View style={styles.blindNotice}>

@@ -66,6 +66,14 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_verify_otp",
   "rpc_buyer_mark_paid",
   "rpc_seller_confirm_payment",
+  "rpc_upgrade_vip_seller",
+  "rpc_pay_vip_deposit",
+  "rpc_seller_create_product_v2",
+  "rpc_place_bid_v2",
+  "rpc_admin_lock_user",
+  "rpc_admin_unlock_user",
+  "rpc_file_complaint",
+  "rpc_admin_resolve_complaint",
 ]);
 
 Deno.serve(async (req: Request) => {

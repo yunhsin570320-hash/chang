@@ -305,7 +305,7 @@ export default function SellerPage() {
     try {
       const imageUrl = await uploadProductImage(selectedImage);
 
-      const { data: rpcResult, error } = await callRpc('rpc_seller_create_product', {
+      const { data: rpcResult, error } = await callRpc('rpc_seller_create_product_v2', {
         p_token: sessionToken,
         p_name: name.trim(),
         p_description: description.trim(),
@@ -671,6 +671,14 @@ export default function SellerPage() {
                 <Text style={[styles.typeOptionText, listingType === 'direct' && styles.typeOptionTextActiveDirect]}>直購廳</Text>
               </TouchableOpacity>
             </View>
+
+            {user?.membership_tier !== 'vip' && !user?.is_admin && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingHorizontal: 4 }}>
+                <Text style={{ color: '#FFD700', fontSize: 12, flex: 1 }}>
+                  免費會員僅可上架直購商品（最多 5 件）。升級 VIP（NT$500）即可上架競標商品且無數量限制。
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.inputGroup}>

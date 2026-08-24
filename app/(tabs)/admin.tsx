@@ -13,7 +13,7 @@ import { supabase, callRpc, Profile, Report, Product } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 
-type AdminTab = 'dashboard' | 'members' | 'products' | 'reports' | 'actions';
+type AdminTab = 'dashboard' | 'members' | 'products' | 'reports' | 'complaints' | 'actions';
 
 type Stats = {
   totalUsers: number;
@@ -68,6 +68,7 @@ export default function AdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [actionLog, setActionLog] = useState<any[]>([]);
+  const [complaints, setComplaints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [memberSearch, setMemberSearch] = useState('');
@@ -135,6 +136,13 @@ export default function AdminPage() {
           .order('created_at', { ascending: false });
         if (error) throw error;
         setReports((data || []) as any);
+      } else if (tab === 'complaints') {
+        const { data, error } = await supabase
+          .from('complaints')
+          .select('id, reason, status, admin_response, created_at, resolved_at, user_id, user:profiles!user_id(id, name, email, is_blocked, lock_reason)')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        setComplaints(data || []);
       } else if (tab === 'actions') {
         const { data, error } = await supabase
           .from('admin_actions')
@@ -441,6 +449,78 @@ export default function AdminPage() {
     </View>
   );
 
+  const handleResolveComplaint = async (complaintId: string, approve: boolean) => {
+    if (!sessionToken) return;
+    const response = prompt(approve ? '請輸入解鎖原因/回覆' : '請輸入駁回原因') || '';
+    if (!response.trim()) return;
+    try {
+      const { data, error } = await callRpc('rpc_admin_resolve_complaint', {
+        p_token: sessionToken,
+        p_complaint_id: complaintId,
+        p_approve: approve,
+        p_response: response.trim(),
+      });
+      if (error || data?.error) {
+        alert(data?.error || '操作失敗');
+        return;
+      }
+      fetchTabData('complaints');
+      fetchStats();
+    } catch {
+      alert('操作失敗');
+    }
+  };
+
+  const renderComplaints = () => (
+    <FlatList
+      data={complaints}
+      keyExtractor={(c) => c.id}
+      contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
+      renderItem={({ item: c }) => (
+        <View style={styles.reportCard}>
+          <View style={styles.reportHeader}>
+            <View style={[styles.reportStatusBadge, c.status === 'pending' ? styles.pendingStatus : c.status === 'resolved' ? styles.resolvedStatus : styles.dismissedStatus]}>
+              <Text style={styles.reportStatusText}>
+                {c.status === 'pending' ? '待處理' : c.status === 'resolved' ? '已解鎖' : '已駁回'}
+              </Text>
+            </View>
+            <Text style={styles.reportDate}>{new Date(c.created_at).toLocaleString('zh-TW')}</Text>
+          </View>
+          <Text style={styles.reportParty}>
+            <Text style={styles.reportPartyLabel}>申訴人：</Text>
+            {c.user?.name} ({c.user?.email})
+          </Text>
+          {c.user?.is_blocked && (
+            <Text style={styles.blockReason}>鎖定原因：{c.user?.lock_reason || '未知'}</Text>
+          )}
+          <Text style={styles.reportReason}>{c.reason}</Text>
+          {c.admin_response && (
+            <Text style={[styles.reportReason, { color: '#00D4AA', marginTop: 4 }]}>
+              管理員回覆：{c.admin_response}
+            </Text>
+          )}
+          {c.status === 'pending' && (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { flex: 1, marginBottom: 0, padding: 10 }]}
+                onPress={() => handleResolveComplaint(c.id, true)}
+              >
+                <Text style={styles.confirmBtnText}>通過並解鎖</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { flex: 1, marginBottom: 0, padding: 10, backgroundColor: 'rgba(255,107,107,0.2)', borderWidth: 1, borderColor: 'rgba(255,107,107,0.4)' }]}
+                onPress={() => handleResolveComplaint(c.id, false)}
+              >
+                <Text style={[styles.confirmBtnText, { color: '#FF6B6B' }]}>駁回</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
+      ListEmptyComponent={<View style={styles.emptyState}><Text style={styles.emptyText}>暫無申訴案件</Text></View>}
+    />
+  );
+
   const renderActionLog = () => (
     <FlatList
       data={actionLog}
@@ -473,6 +553,7 @@ export default function AdminPage() {
           { key: 'members', label: `會員 (${stats?.totalUsers ?? '…'})` },
           { key: 'products', label: `商品 (${stats?.totalProducts ?? '…'})` },
           { key: 'reports', label: `檢舉 ${(stats?.pendingReports ?? 0) > 0 ? `(${stats?.pendingReports})` : ''}` },
+          { key: 'complaints', label: '申訴' },
           { key: 'actions', label: '操作紀錄' },
         ] as { key: AdminTab; label: string }[]).map(t => (
           <TouchableOpacity
@@ -495,6 +576,7 @@ export default function AdminPage() {
           {activeTab === 'members' && renderMembers()}
           {activeTab === 'products' && renderProducts()}
           {activeTab === 'reports' && renderReports()}
+          {activeTab === 'complaints' && renderComplaints()}
           {activeTab === 'actions' && renderActionLog()}
         </>
       )}

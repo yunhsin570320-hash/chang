@@ -54,6 +54,16 @@ export type Profile = {
   bank_account?: string;
   shipping_address?: string;
   created_at: string;
+  membership_tier?: 'free' | 'vip';
+  vip_upgrade_paid?: boolean;
+  vip_deposit_paid?: boolean;
+  vip_upgrade_at?: string;
+  vip_deposit_at?: string;
+  lock_reason?: string;
+  locked_at?: string;
+  unlock_requested_at?: string;
+  unlock_reason?: string;
+  bid_abandon_count?: number;
 };
 
 export type Report = {

@@ -10,10 +10,12 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
+  Alert,
 } from 'react-native';
 import {
   User, Package, Crown, Bell, BellOff, Phone, CreditCard,
   MapPin, Building2, Edit3, Check, X, ChevronRight, Trophy, ShieldCheck, ShieldAlert,
+  Lock, Unlock, AlertCircle, Zap,
 } from 'lucide-react-native';
 import { supabase, callRpc, Bid, Product, Notification } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -58,6 +60,14 @@ export default function ProfilePage() {
 
   const { user, currentRole, switchRole, logout, canSwitchRoles, refreshUser, sessionToken } = useAuth();
   const router = useRouter();
+
+  // Membership / upgrade state
+  const [upgrading, setUpgrading] = useState(false);
+  const [complaintModal, setComplaintModal] = useState(false);
+  const [complaintReason, setComplaintReason] = useState('');
+  const [complaintSubmitting, setComplaintSubmitting] = useState(false);
+  const [complaintError, setComplaintError] = useState<string | null>(null);
+  const [complaintSuccess, setComplaintSuccess] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
   const profileComplete = !!(user?.phone && user?.shipping_address);
@@ -215,6 +225,70 @@ export default function ProfilePage() {
     if (!user || unreadCount === 0) return;
     await callRpc('rpc_mark_notifications_read', { p_token: sessionToken, p_all: true });
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+  };
+
+  const handleUpgradeVip = async () => {
+    if (!sessionToken) return;
+    setUpgrading(true);
+    try {
+      const { data, error } = await callRpc('rpc_upgrade_vip_seller', {
+        p_token: sessionToken,
+        p_payment_method: user?.payment_method || null,
+      });
+      if (error || data?.error) {
+        Alert.alert('升級失敗', data?.error || '請稍後再試');
+        return;
+      }
+      await refreshUser();
+      Alert.alert('升級成功', '您已升級為 VIP 會員，商品上架無限制！');
+    } catch {
+      Alert.alert('升級失敗', '請稍後再試');
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
+  const handlePayDeposit = async () => {
+    if (!sessionToken) return;
+    setUpgrading(true);
+    try {
+      const { data, error } = await callRpc('rpc_pay_vip_deposit', {
+        p_token: sessionToken,
+        p_payment_method: user?.payment_method || null,
+      });
+      if (error || data?.error) {
+        Alert.alert('繳費失敗', data?.error || '請稍後再試');
+        return;
+      }
+      await refreshUser();
+      Alert.alert('保證金已繳納', '您現在可以在競價廳參與競標了！');
+    } catch {
+      Alert.alert('繳費失敗', '請稍後再試');
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
+  const handleFileComplaint = async () => {
+    if (!sessionToken || !complaintReason.trim()) return;
+    setComplaintSubmitting(true);
+    setComplaintError(null);
+    try {
+      const { data, error } = await callRpc('rpc_file_complaint', {
+        p_token: sessionToken,
+        p_reason: complaintReason.trim(),
+      });
+      if (error || data?.error) {
+        setComplaintError(data?.error || '提交失敗，請稍後再試');
+        return;
+      }
+      setComplaintSuccess(true);
+      await refreshUser();
+    } catch {
+      setComplaintError('提交失敗，請稍後再試');
+    } finally {
+      setComplaintSubmitting(false);
+    }
   };
 
   const markRead = async (id: string) => {
@@ -420,11 +494,162 @@ export default function ProfilePage() {
             )}
           </View>
 
+          {/* Membership section */}
+          {!user.is_admin && (
+            <View style={styles.infoSection}>
+              <Text style={styles.infoSectionTitle}>會員等級</Text>
+
+              {user.is_blocked ? (
+                <View style={styles.lockedCard}>
+                  <Lock size={28} color="#FF6B6B" />
+                  <Text style={styles.lockedTitle}>帳號已鎖定</Text>
+                  <Text style={styles.lockedReason}>
+                    {user.lock_reason || user.blocked_reason || '違反平台規範'}
+                  </Text>
+                  {user.unlock_requested_at ? (
+                    <Text style={styles.pendingText}>申訴審核中，請耐心等候管理員處理。</Text>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.complaintBtn}
+                      onPress={() => { setComplaintModal(true); setComplaintReason(''); setComplaintError(null); setComplaintSuccess(false); }}
+                    >
+                      <Unlock size={16} color="#FFD700" />
+                      <Text style={styles.complaintBtnText}>提出申訴</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.membershipCard}>
+                  {/* Tier badge */}
+                  <View style={styles.tierRow}>
+                    <View style={[styles.tierBadge, user.membership_tier === 'vip' ? styles.tierBadgeVip : styles.tierBadgeFree]}>
+                      {user.membership_tier === 'vip' ? <Crown size={14} color="#FFD700" /> : <User size={14} color="#888" />}
+                      <Text style={[styles.tierBadgeText, user.membership_tier === 'vip' && styles.tierBadgeTextVip]}>
+                        {user.membership_tier === 'vip' ? 'VIP 會員' : '免費會員'}
+                      </Text>
+                    </View>
+                    {user.vip_deposit_paid && (
+                      <View style={styles.depositBadge}>
+                        <ShieldCheck size={12} color="#00D4AA" />
+                        <Text style={styles.depositBadgeText}>競標保證金已繳</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Benefits summary */}
+                  <View style={styles.benefitsList}>
+                    <View style={styles.benefitRow}>
+                      <Text style={styles.benefitLabel}>直購廳</Text>
+                      <Text style={styles.benefitValue}>可用</Text>
+                    </View>
+                    <View style={styles.benefitRow}>
+                      <Text style={styles.benefitLabel}>商品上架</Text>
+                      <Text style={styles.benefitValue}>{user.membership_tier === 'vip' ? '無限制' : '最多 5 件'}</Text>
+                    </View>
+                    <View style={styles.benefitRow}>
+                      <Text style={styles.benefitLabel}>競價廳競標</Text>
+                      <Text style={[styles.benefitValue, !user.vip_deposit_paid && styles.benefitLocked]}>
+                        {user.vip_deposit_paid ? '可用' : '需繳保證金'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Upgrade buttons */}
+                  {user.membership_tier !== 'vip' && (
+                    <TouchableOpacity
+                      style={styles.upgradeBtn}
+                      onPress={handleUpgradeVip}
+                      disabled={upgrading}
+                    >
+                      {upgrading ? <ActivityIndicator color="#000" /> : (
+                        <><Zap size={16} color="#000" /><Text style={styles.upgradeBtnText}>升級 VIP 會員 · NT$500</Text></>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {!user.vip_deposit_paid && (
+                    <TouchableOpacity
+                      style={styles.depositBtn}
+                      onPress={handlePayDeposit}
+                      disabled={upgrading}
+                    >
+                      {upgrading ? <ActivityIndicator color="#FFD700" /> : (
+                        <><ShieldCheck size={16} color="#FFD700" /><Text style={styles.depositBtnText}>繳納競標保證金 · NT$1000</Text></>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {user.membership_tier === 'vip' && user.vip_deposit_paid && (
+                    <View style={styles.allUnlocked}>
+                      <Check size={16} color="#00D4AA" />
+                      <Text style={styles.allUnlockedText}>已享有全部會員權益</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
           <TouchableOpacity style={styles.logoutButton} onPress={logout}>
             <Text style={styles.logoutText}>登出</Text>
           </TouchableOpacity>
         </ScrollView>
       )}
+
+      {/* Complaint modal */}
+      <Modal visible={complaintModal} transparent animationType="slide" onRequestClose={() => setComplaintModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>帳號申訴</Text>
+              <TouchableOpacity onPress={() => setComplaintModal(false)}>
+                <X size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {complaintSuccess ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Check size={40} color="#00D4AA" />
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 12 }}>申訴已提交</Text>
+                <Text style={{ color: '#aaa', fontSize: 14, marginTop: 8, textAlign: 'center' }}>管理員將盡快審核您的申訴，請耐心等候。</Text>
+                <TouchableOpacity style={styles.saveBtn} onPress={() => setComplaintModal(false)}>
+                  <Text style={styles.saveBtnText}>確認</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <View style={styles.modalField}>
+                  <View style={styles.modalFieldLabel}>
+                    <AlertCircle size={16} color="#FFD700" />
+                    <Text style={styles.modalLabel}>請說明申訴理由</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.modalInput, { minHeight: 100, textAlignVertical: 'top' }]}
+                    value={complaintReason}
+                    onChangeText={setComplaintReason}
+                    placeholder="請詳細說明您認為帳號被鎖定的原因，以及您的說明"
+                    placeholderTextColor="#444"
+                    multiline
+                    numberOfLines={5}
+                  />
+                </View>
+                {complaintError && (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{complaintError}</Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={[styles.saveBtn, (!complaintReason.trim() || complaintSubmitting) && { opacity: 0.6 }]}
+                  onPress={handleFileComplaint}
+                  disabled={!complaintReason.trim() || complaintSubmitting}
+                >
+                  {complaintSubmitting ? <ActivityIndicator color="#000" /> : (
+                    <><Check size={18} color="#000" /><Text style={styles.saveBtnText}>提交申訴</Text></>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {activeTab === 'bids' && (
         <FlatList
@@ -824,6 +1049,59 @@ const styles = StyleSheet.create({
     backgroundColor: '#00D4AA', padding: 16, borderRadius: 12, marginTop: 8, marginBottom: 20,
   },
   saveBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  // Membership styles
+  membershipCard: {
+    backgroundColor: '#1A1A2E', borderRadius: 14, padding: 16,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.15)',
+  },
+  tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  tierBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+  },
+  tierBadgeFree: { backgroundColor: 'rgba(255,255,255,0.08)' },
+  tierBadgeVip: { backgroundColor: 'rgba(255,215,0,0.2)' },
+  tierBadgeText: { fontSize: 13, fontWeight: '700', color: '#888' },
+  tierBadgeTextVip: { color: '#FFD700' },
+  depositBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(0,212,170,0.15)', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8,
+  },
+  depositBadgeText: { color: '#00D4AA', fontSize: 11, fontWeight: '600' },
+  benefitsList: { gap: 10, marginBottom: 16 },
+  benefitRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  benefitLabel: { color: '#888', fontSize: 14 },
+  benefitValue: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  benefitLocked: { color: '#FF6B6B' },
+  upgradeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#FFD700', padding: 14, borderRadius: 12, marginBottom: 10,
+  },
+  upgradeBtnText: { color: '#000', fontSize: 15, fontWeight: '700' },
+  depositBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: 'rgba(255,215,0,0.1)', padding: 14, borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.4)',
+  },
+  depositBtnText: { color: '#FFD700', fontSize: 15, fontWeight: '700' },
+  allUnlocked: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 8,
+  },
+  allUnlockedText: { color: '#00D4AA', fontSize: 14, fontWeight: '600' },
+  lockedCard: {
+    backgroundColor: 'rgba(255,107,107,0.08)', borderRadius: 14, padding: 20,
+    borderWidth: 1, borderColor: 'rgba(255,107,107,0.2)', alignItems: 'center', gap: 10,
+  },
+  lockedTitle: { color: '#FF6B6B', fontSize: 17, fontWeight: '700' },
+  lockedReason: { color: '#aaa', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  pendingText: { color: '#FFD700', fontSize: 13, marginTop: 4 },
+  complaintBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: 'rgba(255,215,0,0.1)', padding: 12, borderRadius: 10, marginTop: 8,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.3)',
+  },
+  complaintBtnText: { color: '#FFD700', fontSize: 14, fontWeight: '600' },
   errorBox: {
     backgroundColor: 'rgba(255,107,107,0.15)', borderRadius: 8, padding: 12,
     marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,107,107,0.3)',

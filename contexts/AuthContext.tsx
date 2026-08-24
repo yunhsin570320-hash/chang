@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data: freshUser } = await supabase
         .from('profiles')
-        .select('id, name, email, role, is_buyer, is_seller, is_admin, is_blocked, blocked_reason, blocked_at, warning_count, phone, phone_verified, phone_verified_at, payment_method, bank_account, shipping_address, created_at')
+        .select('id, name, email, role, is_buyer, is_seller, is_admin, is_blocked, blocked_reason, blocked_at, warning_count, phone, phone_verified, phone_verified_at, payment_method, bank_account, shipping_address, created_at, membership_tier, vip_upgrade_paid, vip_deposit_paid, vip_upgrade_at, vip_deposit_at, lock_reason, locked_at, unlock_requested_at, unlock_reason, bid_abandon_count')
         .eq('id', user.id)
         .maybeSingle();
       if (freshUser) {
