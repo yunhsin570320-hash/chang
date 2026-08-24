@@ -19,6 +19,7 @@ import {
   MapPin, Building2, Edit3, Check, X, ChevronRight, Trophy, ShieldCheck, ShieldAlert,
   Lock, Unlock, AlertCircle, Zap, Camera, Upload, Clock, ScrollText,
 } from 'lucide-react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { supabase, callRpc, Bid, Product, Notification, uploadPaymentProof, PaymentRequest } from '../../lib/supabase';
 import { WebCamera } from '../../components/WebCamera';
 import { useAuth } from '../../contexts/AuthContext';
@@ -698,6 +699,24 @@ export default function ProfilePage() {
                   帳號：{siteSettings.payment_account || '待設定'}{'\n'}
                   戶名：{siteSettings.payment_holder || '待設定'}
                 </Text>
+
+                {(siteSettings.payment_bank_name && siteSettings.payment_account) ? (
+                  <View style={styles.qrCodeContainer}>
+                    <Text style={styles.qrCodeHint}>開啟銀行 App 掃描以下 QR Code 即可快速轉帳</Text>
+                    <View style={styles.qrCodeBox}>
+                      <QRCode
+                        value={`TWQRP://BANK${siteSettings.payment_bank_name}?ACCT=${siteSettings.payment_account}&NAME=${siteSettings.payment_holder || ''}`}
+                        size={160}
+                        color="#0D0D1A"
+                        backgroundColor="#fff"
+                      />
+                    </View>
+                    <Text style={styles.qrCodeAmount}>
+                      繳費金額：NT${paymentType === 'vip_upgrade' ? '500' : '1,000'}
+                    </Text>
+                  </View>
+                ) : null}
+
                 {siteSettings.payment_instructions ? (
                   <Text style={styles.paymentInstructionsText}>
                     {siteSettings.payment_instructions.split('\n').map((line, i) => <Text key={i}>{line}{'\n'}</Text>)}
@@ -1368,6 +1387,10 @@ const styles = StyleSheet.create({
   paymentInstructionsText: { color: '#aaa', fontSize: 13, lineHeight: 22 },
   paymentAccountLine: { color: '#00D4AA', fontSize: 13 },
   paymentInstructionsNote: { color: '#FFD700', fontSize: 12, marginTop: 8 },
+  qrCodeContainer: { alignItems: 'center', marginVertical: 12, padding: 16, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(0,212,170,0.15)' },
+  qrCodeHint: { color: '#aaa', fontSize: 12, textAlign: 'center', marginBottom: 12 },
+  qrCodeBox: { padding: 12, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  qrCodeAmount: { color: '#00D4AA', fontSize: 14, fontWeight: '700', marginTop: 12 },
   uploadOptions: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   uploadBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
