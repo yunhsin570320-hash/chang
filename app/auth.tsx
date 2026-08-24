@@ -14,7 +14,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Crown, User, Mail, Lock, Eye, EyeOff, Check, Phone, MapPin, ShieldCheck, FileText, X, ChevronRight, KeyRound, ArrowLeft } from 'lucide-react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { callRpc } from '../lib/supabase';
+import { callRpc, supabase } from '../lib/supabase';
 
 function validateTWPhone(phone: string): boolean {
   const cleaned = phone.replace(/[\s\-()]/g, '');
@@ -98,19 +98,12 @@ export default function AuthPage() {
 
     setOtpSending(true);
     try {
-      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
-      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-sms-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ phone: cleanedPhone }),
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: email.trim().toLowerCase(),
+        options: { shouldCreateUser: false },
       });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setError(data.error || '驗證碼發送失敗，請稍後再試');
+      if (otpError) {
+        setError(otpError.message || '驗證碼發送失敗，請稍後再試');
         return;
       }
       setOtpCountdown(600);
@@ -133,21 +126,18 @@ export default function AuthPage() {
 
     setOtpVerifying(true);
     try {
-      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
-      const { data: verifyData, error: verifyErr } = await callRpc('rpc_verify_otp', {
-        p_phone: cleanedPhone,
-        p_code: otpCode,
+      const { error: verifyErr } = await supabase.auth.verifyOtp({
+        email: email.trim().toLowerCase(),
+        token: otpCode,
+        type: 'email',
       });
 
-      if (verifyErr || !verifyData || verifyData.error) {
-        setError(verifyData?.error || '驗證碼驗證失敗');
-        return;
-      }
-      if (!verifyData.verified) {
-        setError('驗證失敗，請重試');
+      if (verifyErr) {
+        setError(verifyErr.message || '驗證碼驗證失敗');
         return;
       }
 
+      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
       const result = await register(name.trim(), email.trim(), password, isBuyer, isSeller, cleanedPhone, address.trim());
       if (result.error) {
         setError(result.error);
@@ -163,19 +153,12 @@ export default function AuthPage() {
     setError(null);
     setOtpSending(true);
     try {
-      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
-      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-sms-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ phone: cleanedPhone }),
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: email.trim().toLowerCase(),
+        options: { shouldCreateUser: false },
       });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setError(data.error || '重新發送失敗');
+      if (otpError) {
+        setError(otpError.message || '重新發送失敗');
         return;
       }
       setOtpCountdown(600);
@@ -193,7 +176,7 @@ export default function AuthPage() {
   const handleForgotRequest = async () => {
     setError(null);
     if (!forgotEmail.trim()) { setError('請輸入註冊時的郵箱'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail.trim())) { setError('請輸入有效的電子郵箱'); return; }
+    if (!/^[^s@]+@[^s@]+\.[^s@]+$/.test(forgotEmail.trim())) { setError('請輸入有效的電子郵箱'); return; }
     if (!validateTWPhone(forgotPhone)) { setError('請輸入有效的台灣手機號碼'); return; }
 
     setForgotSubmitting(true);
@@ -208,19 +191,13 @@ export default function AuthPage() {
       }
       setForgotToken(data.reset_token);
 
-      // Send OTP to the phone
-      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-sms-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ phone: forgotPhone.replace(/[\s\-()]/g, '') }),
+      // Send OTP via email using Supabase built-in
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: forgotEmail.trim().toLowerCase(),
+        options: { shouldCreateUser: false },
       });
-      const otpData = await res.json();
-      if (!res.ok || otpData.error) {
-        setError(otpData.error || '驗證碼發送失敗');
+      if (otpError) {
+        setError(otpError.message || '驗證碼發送失敗');
         return;
       }
       setOtpCountdown(600);
@@ -239,12 +216,13 @@ export default function AuthPage() {
 
     setForgotSubmitting(true);
     try {
-      const { data, error: rpcErr } = await callRpc('rpc_verify_otp', {
-        p_phone: forgotPhone.replace(/[\s\-()]/g, ''),
-        p_code: forgotOtp,
+      const { error: verifyErr } = await supabase.auth.verifyOtp({
+        email: forgotEmail.trim().toLowerCase(),
+        token: forgotOtp,
+        type: 'email',
       });
-      if (rpcErr || !data || data.error || !data.verified) {
-        setError(data?.error || '驗證碼錯誤');
+      if (verifyErr) {
+        setError(verifyErr.message || '驗證碼錯誤');
         return;
       }
       setForgotStep('reset');
@@ -296,18 +274,12 @@ export default function AuthPage() {
     setError(null);
     setForgotSubmitting(true);
     try {
-      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/send-sms-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ phone: forgotPhone.replace(/[\s\-()]/g, '') }),
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: forgotEmail.trim().toLowerCase(),
+        options: { shouldCreateUser: false },
       });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setError(data.error || '重新發送失敗');
+      if (otpError) {
+        setError(otpError.message || '重新發送失敗');
         return;
       }
       setOtpCountdown(600);
@@ -352,8 +324,8 @@ export default function AuthPage() {
           <Text style={styles.title}>暗標競標會</Text>
           <Text style={styles.subtitle}>
             {forgotPassword
-              ? forgotSuccess ? '密碼已重設' : forgotStep === 'identify' ? '忘記密碼' : forgotStep === 'otp' ? '驗證手機號碼' : '設定新密碼'
-              : isLogin ? '登入您的帳戶' : step === 'otp' ? '驗證手機號碼' : '註冊新帳戶'}
+              ? forgotSuccess ? '密碼已重設' : forgotStep === 'identify' ? '忘記密碼' : forgotStep === 'otp' ? '驗證信箱' : '設定新密碼'
+              : isLogin ? '登入您的帳戶' : step === 'otp' ? '驗證信箱' : '註冊新帳戶'}
           </Text>
         </View>
 
@@ -438,7 +410,7 @@ export default function AuthPage() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>聯絡手機 * <Text style={styles.requiredHint}>（用於競標通知與交付聯繫）</Text></Text>
+                <Text style={styles.inputLabel}>聯絡手機 * <Text style={styles.requiredHint}>（用於競標通知與交付聯繫，驗證碼已改為 email 發送）</Text></Text>
                 <View style={styles.inputRow}>
                   <Phone size={20} color="#666" />
                   <TextInput
@@ -496,9 +468,9 @@ export default function AuthPage() {
               <View style={styles.otpInfoBox}>
                 <ShieldCheck size={28} color="#00D4AA" />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.otpInfoTitle}>手機號碼驗證</Text>
+                  <Text style={styles.otpInfoTitle}>信箱驗證</Text>
                   <Text style={styles.otpInfoText}>
-                    驗證碼已傳送簡訊至 {phone}
+                    驗證碼已發送至 {email}
                   </Text>
                 </View>
               </View>
@@ -593,7 +565,7 @@ export default function AuthPage() {
                     )}
                   </View>
 
-                  <Text style={styles.forgotHint}>系統將發送驗證碼到您的手機，驗證後可設定新密碼。</Text>
+                  <Text style={styles.forgotHint}>系統將發送驗證碼到您的電子郵箱，驗證後可設定新密碼。</Text>
 
 n                  <TouchableOpacity
                     style={[styles.submitButton, forgotSubmitting && styles.disabled]}
@@ -610,8 +582,8 @@ n                  <TouchableOpacity
                   <View style={styles.otpInfoBox}>
                     <ShieldCheck size={28} color="#00D4AA" />
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.otpInfoTitle}>手機號碼驗證</Text>
-                      <Text style={styles.otpInfoText}>驗證碼已傳送至 {forgotPhone}</Text>
+                      <Text style={styles.otpInfoTitle}>信箱驗證</Text>
+                      <Text style={styles.otpInfoText}>驗證碼已發送至 {forgotEmail}</Text>
                     </View>
                   </View>
 
