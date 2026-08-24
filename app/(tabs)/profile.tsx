@@ -17,7 +17,7 @@ import {
 import {
   User, Package, Crown, Bell, BellOff, Phone, CreditCard,
   MapPin, Building2, Edit3, Check, X, ChevronRight, Trophy, ShieldCheck, ShieldAlert,
-  Lock, Unlock, AlertCircle, Zap, Camera, Upload, Clock,
+  Lock, Unlock, AlertCircle, Zap, Camera, Upload, Clock, ScrollText,
 } from 'lucide-react-native';
 import { supabase, callRpc, Bid, Product, Notification, uploadPaymentProof, PaymentRequest } from '../../lib/supabase';
 import { WebCamera } from '../../components/WebCamera';
@@ -78,6 +78,7 @@ export default function ProfilePage() {
   const [complaintSubmitting, setComplaintSubmitting] = useState(false);
   const [complaintError, setComplaintError] = useState<string | null>(null);
   const [complaintSuccess, setComplaintSuccess] = useState(false);
+  const [rulesModalVisible, setRulesModalVisible] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
   const profileComplete = !!(user?.phone && user?.shipping_address);
@@ -655,6 +656,12 @@ export default function ProfilePage() {
             </View>
           )}
 
+          <TouchableOpacity style={styles.rulesButton} onPress={() => setRulesModalVisible(true)}>
+            <ScrollText size={18} color="#00D4AA" />
+            <Text style={styles.rulesButtonText}>使用規則與注意事項</Text>
+            <ChevronRight size={16} color="#555" />
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.logoutButton} onPress={logout}>
             <Text style={styles.logoutText}>登出</Text>
           </TouchableOpacity>
@@ -846,6 +853,83 @@ export default function ProfilePage() {
           />
         </View>
       )}
+
+      {/* Rules modal */}
+      <Modal visible={rulesModalVisible} transparent animationType="slide" onRequestClose={() => setRulesModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>使用規則與注意事項</Text>
+              <TouchableOpacity onPress={() => setRulesModalVisible(false)}>
+                <X size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+              {/* Section: 競標廳規則 */}
+              <View style={styles.rulesSection}>
+                <View style={styles.rulesSectionHeader}>
+                  <Trophy size={16} color="#FFD700" />
+                  <Text style={styles.rulesSectionTitle}>競標廳規則</Text>
+                </View>
+                <Text style={styles.rulesText}>
+                  {'1. 每人每件商品僅能出價一次，請審慎評估後再下標。\n2. 出價金額必須不低於賣家設定的底價。\n3. 結標時，以「最高出價」者得標；若最高金額有二人以上相同，以「先出價者」優先得標。\n4. 參與競標需先繳納保證金 NT$1,000，未繳納者無法出價。\n5. 得標後請依賣家指示完成付款與交付，無故不取將記點處分。\n6. 賣家不得對自己的商品出價。\n7. 競標商品結標後由賣家手動結標並通知得標者。'}
+                </Text>
+              </View>
+
+              {/* Section: 直購廳規則 */}
+              <View style={styles.rulesSection}>
+                <View style={styles.rulesSectionHeader}>
+                  <Package size={16} color="#00D4AA" />
+                  <Text style={styles.rulesSectionTitle}>直購廳規則</Text>
+                </View>
+                <Text style={styles.rulesText}>
+                  {'1. 直購商品以固定價格即買即成交，無需競標。\n2. 購買時請確認數量，庫存數量以實際庫存為準，售完為止。\n3. 系統會自動扣減庫存，多人同時購買時以實際成交順序為準，未成功者會收到「商品已被購買」提示。\n4. 賣家不得購買自己的商品。\n5. 購買成功後系統會自動建立交付紀錄，請等候賣家聯繫出貨。'}
+                </Text>
+              </View>
+
+              {/* Section: 會員規範 */}
+              <View style={styles.rulesSection}>
+                <View style={styles.rulesSectionHeader}>
+                  <ShieldCheck size={16} color="#00D4AA" />
+                  <Text style={styles.rulesSectionTitle}>會員規範</Text>
+                </View>
+                <Text style={styles.rulesText}>
+                  {'1. 會員註冊後須填寫並驗證手機號碼，以及填寫收貨地址，才能完整使用平台功能。\n2. 免費會員可使用直購廳，上架商品最多 5 件；升級 VIP 會員（NT$500）後無上架數量限制。\n3. 帳號若違反平台規範（如棄標、惡意檢舉、詐欺等），管理員可予以鎖定，鎖定後可提出申訴。\n4. 請勿使用他人帳號或冒名頂替，一經查證將立即鎖定帳號。\n5. 請妥善保管帳號密碼，因帳號遭盜用所造成的損失由帳號持有人自行承擔。'}
+                </Text>
+              </View>
+
+              {/* Section: 交易與交付 */}
+              <View style={styles.rulesSection}>
+                <View style={styles.rulesSectionHeader}>
+                  <CreditCard size={16} color="#FFD700" />
+                  <Text style={styles.rulesSectionTitle}>交易與交付注意事項</Text>
+                </View>
+                <Text style={styles.rulesText}>
+                  {'1. 得標或直購後，請至「會員中心」確認付款方式與收貨地址是否正確。\n2. 付款方式與收款帳號請於個人資料中設定，以利賣家聯繫收款。\n3. 交付進度可至交付紀錄頁面查看，賣家會更新出貨與追蹤編號。\n4. 如對交易有疑慮，可透過商品頁面的檢舉功能向管理員反映。\n5. 平台僅提供交易媒介，不介入買賣雙方的金流與物流，請雙方自行確認交易細節。'}
+                </Text>
+              </View>
+
+              {/* Section: 禁止事項 */}
+              <View style={styles.rulesSection}>
+                <View style={styles.rulesSectionHeader}>
+                  <ShieldAlert size={16} color="#FF6B6B" />
+                  <Text style={styles.rulesSectionTitle}>禁止事項</Text>
+                </View>
+                <Text style={styles.rulesText}>
+                  {'1. 禁止刊登違法、仿冒、色情或暴力相關商品。\n2. 禁止惡意棄標、哄抬價格或與賣家串通圍標。\n3. 禁止在商品描述中留下外部交易連結或個人聯絡方式引導私下交易。\n4. 禁止惡意檢舉其他會員或濫用申訴功能。\n5. 違反以上規定者，管理員有權予以警告、鎖定帳號或刪除商品，情節嚴重者將永久停權。'}
+                </Text>
+              </View>
+
+              <View style={styles.rulesFooter}>
+                <Text style={styles.rulesFooterText}>
+                  {'本平台保留修改使用規則之權利，修改後將於此頁面更新。\n使用本平台即視為同意以上規則與注意事項。'}
+                </Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Edit profile modal */}
       <Modal visible={editModalVisible} transparent animationType="slide" onRequestClose={() => setEditModalVisible(false)}>
@@ -1300,4 +1384,25 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,107,107,0.2)',
   },
   rejectedNoticeText: { color: '#FF6B6B', fontSize: 12, flex: 1, lineHeight: 18 },
+  rulesButton: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    margin: 16, marginTop: 8, padding: 16, borderRadius: 12,
+    backgroundColor: 'rgba(0,212,170,0.08)',
+    borderWidth: 1, borderColor: 'rgba(0,212,170,0.2)',
+  },
+  rulesButtonText: { color: '#00D4AA', fontSize: 15, fontWeight: '600', flex: 1 },
+  rulesSection: {
+    marginBottom: 20, padding: 16, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+  },
+  rulesSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  rulesSectionTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  rulesText: { color: '#aaa', fontSize: 13, lineHeight: 22 },
+  rulesFooter: {
+    padding: 14, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
+  },
+  rulesFooterText: { color: '#666', fontSize: 12, lineHeight: 18, textAlign: 'center' },
 });
