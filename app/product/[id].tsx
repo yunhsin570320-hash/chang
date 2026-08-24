@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Clock, Users, ShoppingBag, Trophy, EyeOff, X, Crown, RotateCcw, Trash2, Truck, Tag, ShoppingCart, Package, Check, Minus, Plus, Flag, Share2, Link as LinkIcon } from 'lucide-react-native';
+import { Clock, Users, ShoppingBag, Trophy, EyeOff, X, Crown, RotateCcw, Trash2, Truck, Tag, ShoppingCart, Package, Check, Minus, Plus, Flag, Share2, Link as LinkIcon, Truck as TruckIcon } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { supabase, callRpc, Product, Bid, Profile, sendAuctionNotifications } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -715,6 +715,20 @@ export default function ProductDetail() {
             <Text style={styles.description}>{product.description || '暫無描述'}</Text>
           </View>
 
+          <View style={styles.section}>
+            <View style={styles.shippingInfoCard}>
+              <TruckIcon size={18} color="#00D4AA" />
+              <View style={styles.shippingInfoContent}>
+                <Text style={styles.shippingInfoLabel}>包裹寄送費用</Text>
+                <Text style={styles.shippingInfoValue}>
+                  {(product.shipping_fee ?? 0) === 0
+                    ? '免運費'
+                    : `NT$ ${(product.shipping_fee ?? 0).toLocaleString()}`}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           {isDirectBuy && isEnded && (
             <View style={styles.section}>
               <View style={styles.directSoldCard}>
@@ -791,11 +805,25 @@ export default function ProductDetail() {
                     <Text style={styles.directBuyStock}>剩 {directStock} 件</Text>
                   </View>
                   <View style={styles.directBuyTotalRow}>
-                    <Text style={styles.directBuyTotalLabel}>合計</Text>
+                    <Text style={styles.directBuyTotalLabel}>商品合計</Text>
                     <Text style={styles.directBuyTotal}>
                       NT$ {((product.direct_price || 0) * (parseInt(purchaseQty, 10) || 0)).toLocaleString()}
                     </Text>
                   </View>
+                  <View style={[styles.directBuyTotalRow, { marginTop: 8 }]}>
+                    <Text style={styles.directBuyTotalLabel}>寄送費用</Text>
+                    <Text style={[styles.directBuyTotal, { fontSize: 16 }]}>
+                      {(product.shipping_fee ?? 0) === 0 ? '免運費' : `NT$ ${(product.shipping_fee ?? 0).toLocaleString()}`}
+                    </Text>
+                  </View>
+                  {(product.shipping_fee ?? 0) > 0 && (
+                    <View style={[styles.directBuyTotalRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(255,215,0,0.15)', paddingTop: 10 }]}>
+                      <Text style={styles.directBuyTotalLabel}>總計</Text>
+                      <Text style={styles.directBuyTotal}>
+                        NT$ {(((product.direct_price || 0) * (parseInt(purchaseQty, 10) || 0)) + (product.shipping_fee ?? 0)).toLocaleString()}
+                      </Text>
+                    </View>
+                  )}
                   {directBuyError && <Text style={styles.directBuyError}>{directBuyError}</Text>}
                   <TouchableOpacity
                     style={[styles.directBuyBtn, directBuying && { opacity: 0.6 }]}
@@ -1382,6 +1410,14 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(0,212,170,0.3)',
   },
   directBuySuccessTitle: { fontSize: 20, fontWeight: '800', color: '#00D4AA' },
+  shippingInfoCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#1A1A2E', borderRadius: 12, padding: 16,
+    borderWidth: 1, borderColor: 'rgba(0, 212, 170, 0.2)',
+  },
+  shippingInfoContent: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  shippingInfoLabel: { fontSize: 14, color: '#888', fontWeight: '500' },
+  shippingInfoValue: { fontSize: 16, color: '#00D4AA', fontWeight: '700' },
   directBuySuccessText: { fontSize: 14, color: '#888', textAlign: 'center' },
   modalOverlay: {
     flex: 1,

@@ -123,6 +123,7 @@ export type Product = {
   is_direct_buy?: boolean;
   direct_price?: number | null;
   stock_quantity?: number;
+  shipping_fee?: number;
   created_at: string;
   seller?: Profile;
   winner?: Profile | null;

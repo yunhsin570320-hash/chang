@@ -64,6 +64,7 @@ export default function SellerPage() {
   const [listingType, setListingType] = useState<'auction' | 'direct'>('auction');
   const [directPrice, setDirectPrice] = useState('');
   const [stockQuantity, setStockQuantity] = useState('1');
+  const [shippingFee, setShippingFee] = useState('0');
   const { user, currentRole, sessionToken } = useAuth();
 
   useFocusEffect(
@@ -126,7 +127,7 @@ export default function SellerPage() {
     try {
       const { data: productData } = await supabase
         .from('products')
-        .select('id, name, status, end_time, winner_id, winning_amount, seller_id, created_at, is_archived, reserve_price, is_direct_buy, direct_price, stock_quantity, image_url')
+        .select('id, name, status, end_time, winner_id, winning_amount, seller_id, created_at, is_archived, reserve_price, is_direct_buy, direct_price, stock_quantity, shipping_fee, image_url')
         .eq('seller_id', user.id)
         .eq('is_archived', false)
         .order('created_at', { ascending: false });
@@ -315,6 +316,7 @@ export default function SellerPage() {
         p_is_direct_buy: listingType === 'direct',
         p_direct_price: listingType === 'direct' ? parseInt(directPrice, 10) : null,
         p_stock_quantity: listingType === 'direct' ? (parseInt(stockQuantity, 10) || 1) : null,
+        p_shipping_fee: parseInt(shippingFee, 10) || 0,
       });
       if (error || rpcResult?.error) throw error || new Error(rpcResult.error);
 
@@ -324,6 +326,7 @@ export default function SellerPage() {
       setReservePrice('0');
       setDirectPrice('');
       setStockQuantity('1');
+      setShippingFee('0');
       setSelectedImage('');
       fetchProducts();
     } catch (error: any) {
@@ -788,6 +791,19 @@ export default function SellerPage() {
               </View>
             </>
           )}
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>包裹寄送費用（NT$）</Text>
+            <TextInput
+              style={styles.input}
+              value={shippingFee}
+              onChangeText={setShippingFee}
+              placeholder="0"
+              placeholderTextColor="#444"
+              keyboardType="numeric"
+            />
+            <Text style={styles.hintText}>設為 0 表示免運費，買家可在商品頁看到此費用</Text>
+          </View>
 
           <TouchableOpacity
             style={[styles.submitButton, listingType === 'direct' && styles.submitButtonDirect, submitting && styles.disabled]}
