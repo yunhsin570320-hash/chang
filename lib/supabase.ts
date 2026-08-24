@@ -263,6 +263,66 @@ export async function uploadPaymentProof(source: string): Promise<string> {
   return `${supabaseUrl}/storage/v1/object/public/payment-proofs/${filename}`;
 }
 
+export type EcPayOrder = {
+  id: string;
+  delivery_id: string;
+  merchant_trade_no: string;
+  total_amount: number;
+  item_name: string;
+  trade_status: 'pending' | 'paid' | 'failed' | 'expired';
+  payment_type?: string | null;
+  ecpay_trade_no?: string | null;
+  paid_at?: string | null;
+  created_at: string;
+};
+
+export async function initiateECPayCheckout(
+  merchantTradeNo: string,
+  totalAmount: number,
+  itemName: string,
+  sessionToken: string
+): Promise<{ checkoutUrl: string | null; error: string | null }> {
+  try {
+    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+    const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+
+    // Build the return/result URLs — point back to the edge function
+    const resultUrl = `${supabaseUrl}/functions/v1/ecpay?action=result`;
+    const returnUrl = `${supabaseUrl}/functions/v1/ecpay?action=callback`;
+
+    const res = await fetch(`${supabaseUrl}/functions/v1/ecpay?action=checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({
+        merchantTradeNo,
+        totalAmount,
+        itemName,
+        returnUrl,
+        orderResultUrl: resultUrl,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      return { checkoutUrl: null, error: `付款請求失敗: ${text}` };
+    }
+
+    // The edge function returns HTML that auto-submits to ECPay
+    // We open it in a new window
+    const html = await res.text();
+    const blob = new Blob([html], { type: 'text/html' });
+    const checkoutUrl = URL.createObjectURL(blob);
+
+    return { checkoutUrl, error: null };
+  } catch (e: any) {
+    return { checkoutUrl: null, error: e.message || 'Network error' };
+  }
+}
+
 export async function sendAuctionNotifications(
   productId: string,
   productName: string,

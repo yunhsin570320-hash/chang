@@ -10,9 +10,9 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { Truck, MapPin, Phone, User, Package, Check, Mail, CreditCard, Banknote, ShoppingCart } from 'lucide-react-native';
+import { Truck, MapPin, Phone, User, Package, Check, Mail, CreditCard, Banknote, ShoppingCart, Globe, ChevronRight } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { supabase, callRpc, Product, Profile } from '../../lib/supabase';
+import { supabase, callRpc, Product, Profile, initiateECPayCheckout } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface DeliveryInfo {
@@ -51,6 +51,8 @@ export default function DeliveryPage() {
   const [notes, setNotes] = useState('');
   const [updating, setUpdating] = useState(false);
   const [paymentUpdating, setPaymentUpdating] = useState(false);
+  const [ecpayLoading, setEcpayLoading] = useState(false);
+  const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -201,6 +203,49 @@ export default function DeliveryPage() {
       case 'paid': return '#FFD700';
       case 'confirmed': return '#10B981';
       default: return '#FF6B6B';
+    }
+  };
+
+  const handleECPayPayment = async () => {
+    if (!delivery || !sessionToken || !product) return;
+    setEcpayLoading(true);
+    try {
+      const amount = delivery.is_direct_buy
+        ? (delivery.purchase_amount || 0)
+        : (product.winning_amount || 0);
+
+      const { data, error } = await callRpc('rpc_create_ecpay_order', {
+        p_token: sessionToken,
+        p_delivery_id: delivery.id,
+        p_amount: Math.round(amount),
+        p_item_name: product.name,
+      });
+
+      if (error || data?.error) {
+        Alert.alert('錯誤', data?.error || error?.message || '建立付款訂單失敗');
+        return;
+      }
+
+      const { checkoutUrl, error: checkoutError } = await initiateECPayCheckout(
+        data.merchant_trade_no,
+        data.total_amount,
+        data.item_name,
+        sessionToken
+      );
+
+      if (checkoutError || !checkoutUrl) {
+        Alert.alert('錯誤', checkoutError || '無法前往付款頁面');
+        return;
+      }
+
+      // Open ECPay checkout in new window
+      if (typeof window !== 'undefined') {
+        window.open(checkoutUrl, '_blank');
+      }
+    } catch {
+      Alert.alert('錯誤', '付款流程啟動失敗');
+    } finally {
+      setEcpayLoading(false);
     }
   };
 
@@ -400,17 +445,41 @@ export default function DeliveryPage() {
             )}
           </View>
 
-          {/* Buyer: mark payment as made */}
+          {/* Buyer: payment options */}
           {!isSeller && (delivery.payment_status || 'unpaid') === 'unpaid' && (
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={handleMarkPaid}
-              disabled={paymentUpdating}
-            >
-              {paymentUpdating ? <ActivityIndicator color="#000" /> : (
-                <><Banknote size={20} color="#000" /><Text style={styles.actionButtonText}>我已付款</Text></>
+            <View style={{ gap: 12 }}>
+              {/* ECPay online payment — primary option */}
+              <TouchableOpacity
+                style={styles.ecpayButton}
+                onPress={handleECPayPayment}
+                disabled={ecpayLoading}
+              >
+                {ecpayLoading ? <ActivityIndicator color="#000" /> : (
+                  <><Globe size={20} color="#000" /><Text style={styles.actionButtonText}>線上付款（綠界信用卡/ATM/超商）</Text></>
+                )}
+              </TouchableOpacity>
+
+              {/* Toggle manual payment option */}
+              <TouchableOpacity
+                style={styles.manualToggle}
+                onPress={() => setShowPaymentOptions(!showPaymentOptions)}
+              >
+                <Text style={styles.manualToggleText}>其他付款方式（手動標記）</Text>
+                <ChevronRight size={16} color="#666" />
+              </TouchableOpacity>
+
+              {showPaymentOptions && (
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={handleMarkPaid}
+                  disabled={paymentUpdating}
+                >
+                  {paymentUpdating ? <ActivityIndicator color="#000" /> : (
+                    <><Banknote size={20} color="#000" /><Text style={styles.actionButtonText}>我已付款（手動標記）</Text></>
+                  )}
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+            </View>
           )}
 
           {/* Seller: confirm payment */}
@@ -626,6 +695,15 @@ const styles = StyleSheet.create({
     gap: 8, backgroundColor: '#10B981', padding: 16, borderRadius: 12,
   },
   actionButtonText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  ecpayButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#00D4AA', padding: 16, borderRadius: 12,
+  },
+  manualToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, padding: 12,
+  },
+  manualToggleText: { color: '#666', fontSize: 14 },
   completedContainer: { alignItems: 'center', paddingVertical: 40 },
   completedText: { color: '#10B981', fontSize: 18, fontWeight: '700', marginTop: 12 },
 });
