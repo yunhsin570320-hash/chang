@@ -11,7 +11,7 @@ export default function TabLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = 60 + (Platform.OS !== 'web' ? insets.bottom : 0);
+  const tabBarHeight = 68 + (Platform.OS !== 'web' ? insets.bottom : 0);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -134,6 +134,8 @@ export default function TabLayout() {
         headerTintColor: '#fff',
         headerTitleStyle: styles.headerTitle,
         tabBarStyle: [styles.tabBar, { height: tabBarHeight, paddingBottom: Platform.OS !== 'web' ? insets.bottom : 8 }],
+        tabBarItemStyle: styles.tabBarItem,
+        tabBarLabelStyle: styles.tabBarLabel,
         tabBarActiveTintColor: '#00D4AA',
         tabBarInactiveTintColor: '#666',
         headerRight: () => <RoleSwitcher />,
@@ -203,7 +205,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#0D0D1A',
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 212, 170, 0.2)',
-    paddingTop: 8,
+    paddingTop: 6,
+    paddingHorizontal: 4,
+  },
+  tabBarItem: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 0,
+  },
+  tabBarLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    marginTop: 1,
   },
   switchContainer: {
     flexDirection: 'row',
