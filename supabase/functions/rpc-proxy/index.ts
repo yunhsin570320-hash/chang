@@ -74,6 +74,10 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_admin_unlock_user",
   "rpc_file_complaint",
   "rpc_admin_resolve_complaint",
+  "rpc_admin_delete_product",
+  "rpc_admin_delete_ended_products",
+  "rpc_request_password_reset",
+  "rpc_reset_password",
 ]);
 
 Deno.serve(async (req: Request) => {

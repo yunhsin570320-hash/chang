@@ -79,6 +79,12 @@ export default function AdminPage() {
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const [deleteProductModal, setDeleteProductModal] = useState<{ id: string; name: string } | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState(false);
+  const [batchDeleteModal, setBatchDeleteModal] = useState(false);
+  const [batchDeleteDays, setBatchDeleteDays] = useState('30');
+  const [batchDeleting, setBatchDeleting] = useState(false);
+
   const [memberSearch, setMemberSearch] = useState('');
   const [memberFilter, setMemberFilter] = useState<'all' | 'blocked' | 'warned'>('all');
   const [productFilter, setProductFilter] = useState<'all' | 'flagged'>('all');
@@ -253,7 +259,59 @@ export default function AdminPage() {
   const filteredProducts = productFilter === 'flagged'
     ? products.filter(p => p.is_flagged)
     : products;
+  const endedProductsCount = products.filter(p => p.status === 'ended').length;
   const filteredReports = reportFilter === 'pending' ? reports.filter(r => r.status === 'pending') : reports;
+
+  const handleDeleteProduct = async () => {
+    if (!deleteProductModal || !sessionToken) return;
+    setDeletingProduct(true);
+    try {
+      const { data, error } = await callRpc('rpc_admin_delete_product', {
+        p_token: sessionToken,
+        p_product_id: deleteProductModal.id,
+      });
+      if (error || data?.error) {
+        Alert.alert('刪除失敗', data?.error || '請稍後再試');
+        return;
+      }
+      setDeleteProductModal(null);
+      fetchTabData('products');
+      fetchStats();
+    } catch {
+      Alert.alert('刪除失敗', '請稍後再試');
+    } finally {
+      setDeletingProduct(false);
+    }
+  };
+
+  const handleBatchDeleteEnded = async () => {
+    if (!sessionToken) return;
+    const days = parseInt(batchDeleteDays, 10);
+    if (isNaN(days) || days < 1) {
+      Alert.alert('請輸入有效天數');
+      return;
+    }
+    setBatchDeleting(true);
+    try {
+      const { data, error } = await callRpc('rpc_admin_delete_ended_products', {
+        p_token: sessionToken,
+        p_older_than_days: days,
+      });
+      if (error || data?.error) {
+        Alert.alert('批次刪除失敗', data?.error || '請稍後再試');
+        return;
+      }
+      const count = data?.deleted_count || 0;
+      setBatchDeleteModal(false);
+      fetchTabData('products');
+      fetchStats();
+      Alert.alert('批次刪除完成', `已刪除 ${count} 件已結標商品`);
+    } catch {
+      Alert.alert('批次刪除失敗', '請稍後再試');
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
 
   const renderDashboard = () => (
     <ScrollView style={styles.tabContent} contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
@@ -369,7 +427,7 @@ export default function AdminPage() {
 
   const renderProducts = () => (
     <View style={styles.tabContent}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 8, alignItems: 'center' }}>
         {(['all', 'flagged'] as const).map(f => (
           <TouchableOpacity key={f} style={[styles.pill, productFilter === f && styles.pillActive]} onPress={() => setProductFilter(f)}>
             <Text style={[styles.pillText, productFilter === f && styles.pillTextActive]}>
@@ -377,6 +435,15 @@ export default function AdminPage() {
             </Text>
           </TouchableOpacity>
         ))}
+        {endedProductsCount > 0 && (
+          <TouchableOpacity
+            style={styles.batchDeleteBtn}
+            onPress={() => setBatchDeleteModal(true)}
+          >
+            <Trash2 size={14} color="#FF6B6B" />
+            <Text style={styles.batchDeleteText}>批次清理結標 ({endedProductsCount})</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <FlatList
         data={filteredProducts}
@@ -403,6 +470,14 @@ export default function AdminPage() {
               <TouchableOpacity style={styles.actionBtn} onPress={() => openActionModal('product', p.id, p.name)}>
                 <Text style={styles.actionBtnText}>管理</Text>
               </TouchableOpacity>
+              {p.status === 'ended' && (
+                <TouchableOpacity
+                  style={[styles.viewBtn, { borderColor: 'rgba(255,107,107,0.3)' }]}
+                  onPress={() => setDeleteProductModal({ id: p.id, name: p.name })}
+                >
+                  <Trash2 size={16} color="#FF6B6B" />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -952,6 +1027,84 @@ export default function AdminPage() {
           </View>
         </View>
       </Modal>
+
+      {/* Delete single product confirmation */}
+      <Modal visible={!!deleteProductModal} transparent animationType="slide" onRequestClose={() => setDeleteProductModal(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHead}>
+              <Text style={styles.modalTitle}>刪除已結標商品</Text>
+              <TouchableOpacity onPress={() => setDeleteProductModal(null)} hitSop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <X size={22} color="#888" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalTargetName}>{deleteProductModal?.name}</Text>
+            <Text style={styles.deleteWarnText}>確定要刪除此已結標商品嗎？</Text>
+            <Text style={styles.deleteWarnSub}>此操作無法復原。相關的競標紀錄、交付資料將一併刪除。</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { flex: 1, marginBottom: 0, backgroundColor: 'rgba(255,255,255,0.08)' }]}
+                onPress={() => setDeleteProductModal(null)}
+                disabled={deletingProduct}
+              >
+                <Text style={[styles.confirmBtnText, { color: '#888' }]}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { flex: 1, marginBottom: 0, backgroundColor: 'rgba(255,107,107,0.9)' }, deletingProduct && styles.confirmBtnDisabled]}
+                onPress={handleDeleteProduct}
+                disabled={deletingProduct}
+              >
+                {deletingProduct ? <ActivityIndicator color="#000" /> : (
+                  <Text style={styles.confirmBtnText}>確認刪除</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Batch delete ended products */}
+      <Modal visible={batchDeleteModal} transparent animationType="slide" onRequestClose={() => setBatchDeleteModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHead}>
+              <Text style={styles.modalTitle}>批次清理已結標商品</Text>
+              <TouchableOpacity onPress={() => setBatchDeleteModal(false)} hitSop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <X size={22} color="#888" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.deleteWarnText}>將刪除所有已結標且超過指定天數的商品。</Text>
+            <Text style={styles.deleteWarnSub}>目前共有 {endedProductsCount} 件已結標商品。此操作無法復原。</Text>
+            <Text style={styles.modalLabel}>超過天數</Text>
+            <TextInput
+              style={[styles.reasonInput, { minHeight: 50, textAlign: 'center', fontSize: 18, fontWeight: '700' }]}
+              value={batchDeleteDays}
+              onChangeText={v => setBatchDeleteDays(v.replace(/\D/g, '').slice(0, 3))}
+              placeholder="30"
+              placeholderTextColor="#444"
+              keyboardType="number-pad"
+            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { flex: 1, marginBottom: 0, backgroundColor: 'rgba(255,255,255,0.08)' }]}
+                onPress={() => setBatchDeleteModal(false)}
+                disabled={batchDeleting}
+              >
+                <Text style={[styles.confirmBtnText, { color: '#888' }]}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { flex: 1, marginBottom: 0, backgroundColor: 'rgba(255,107,107,0.9)' }, batchDeleting && styles.confirmBtnDisabled]}
+                onPress={handleBatchDeleteEnded}
+                disabled={batchDeleting}
+              >
+                {batchDeleting ? <ActivityIndicator color="#000" /> : (
+                  <Text style={styles.confirmBtnText}>確認批次刪除</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1126,4 +1279,13 @@ const styles = StyleSheet.create({
   },
   settingsPreviewTitle: { color: '#00D4AA', fontSize: 13, fontWeight: '700', marginBottom: 8 },
   settingsPreviewText: { color: '#ccc', fontSize: 13, lineHeight: 22 },
+  batchDeleteBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: 'rgba(255,107,107,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,107,107,0.25)',
+  },
+  batchDeleteText: { color: '#FF6B6B', fontSize: 12, fontWeight: '600' },
+  deleteWarnText: { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 8 },
+  deleteWarnSub: { color: '#888', fontSize: 13, lineHeight: 20, marginBottom: 16 },
 });
