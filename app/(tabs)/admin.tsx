@@ -19,7 +19,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 
-type AdminTab = 'dashboard' | 'members' | 'products' | 'reports' | 'complaints' | 'payments' | 'settings' | 'actions';
+type AdminTab = 'dashboard' | 'members' | 'paid' | 'lifetime' | 'products' | 'reports' | 'complaints' | 'payments' | 'settings' | 'actions';
 
 type Stats = {
   totalUsers: number;
@@ -161,7 +161,7 @@ export default function AdminPage() {
   const fetchTabData = useCallback(async (tab: AdminTab) => {
     if (!user || !isAdmin || !sessionToken) return;
     try {
-      if (tab === 'members') {
+      if (tab === 'members' || tab === 'paid' || tab === 'lifetime') {
         const memberList = await getAdminMembers(sessionToken);
         setMembers(memberList as any);
       } else if (tab === 'products') {
@@ -444,6 +444,51 @@ export default function AdminPage() {
       />
     </View>
   );
+
+  const renderMembershipList = (tier: 'paid' | 'lifetime') => {
+    const filtered = members.filter(m =>
+      tier === 'lifetime'
+        ? m.membership_tier === 'vip' && m.is_lifetime
+        : m.membership_tier === 'vip' && !m.is_lifetime
+    );
+    const title = tier === 'lifetime' ? '終身會員' : '付費會員';
+    return (
+      <View style={styles.tabContent}>
+        <View style={{ padding: 16, paddingBottom: 0 }}>
+          <Text style={styles.sectionTitle}>{title} · 共 {filtered.length} 人</Text>
+        </View>
+        <FlatList
+          data={filtered}
+          keyExtractor={m => m.id}
+          contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
+          renderItem={({ item: m }) => (
+            <View style={styles.memberCard}>
+              <View style={styles.memberInfo}>
+                <View style={styles.memberNameRow}>
+                  <Text style={styles.memberName}>{m.name}</Text>
+                  <View style={[styles.warnBadge, { backgroundColor: tier === 'lifetime' ? 'rgba(255,140,0,0.15)' : 'rgba(255,215,0,0.15)', borderColor: tier === 'lifetime' ? 'rgba(255,140,0,0.4)' : 'rgba(255,215,0,0.4)' }]}>
+                    <Text style={[styles.warnBadgeText, { color: tier === 'lifetime' ? '#FF8C00' : '#FFD700' }]}>
+                      {tier === 'lifetime' ? '終身' : '付費'}#{m.membership_number ?? ''}
+                    </Text>
+                  </View>
+                  {m.is_admin && <View style={styles.adminBadge}><Text style={styles.adminBadgeText}>管理員</Text></View>}
+                  {m.is_blocked && <View style={styles.blockedBadge}><Text style={styles.blockedBadgeText}>封鎖中</Text></View>}
+                </View>
+                <Text style={styles.memberEmail}>{m.email}</Text>
+                <View style={styles.memberMeta}>
+                  {m.is_buyer && <Text style={styles.metaChip}>買家</Text>}
+                  {m.is_seller && <Text style={[styles.metaChip, { color: '#FFD700', borderColor: '#FFD700' }]}>賣家</Text>}
+                  {m.phone && <Text style={styles.metaChip}>{m.phone}{m.phone_verified ? ' ✓' : ' !'}</Text>}
+                  {m.vip_deposit_paid && <Text style={[styles.metaChip, { color: '#00D4AA', borderColor: '#00D4AA' }]}>已繳保證金</Text>}
+                </View>
+              </View>
+            </View>
+          )}
+          ListEmptyComponent={<View style={styles.emptyState}><Text style={styles.emptyText}>{tier === 'lifetime' ? '暫無終身會員' : '暫無付費會員'}</Text></View>}
+        />
+      </View>
+    );
+  };
 
   const renderProducts = () => (
     <View style={styles.tabContent}>
@@ -884,6 +929,8 @@ export default function AdminPage() {
         {([
           { key: 'dashboard', label: '總覽' },
           { key: 'members', label: `會員${stats?.totalUsers != null ? ` ${stats!.totalUsers}` : ''}` },
+          { key: 'paid', label: `付費${stats?.paidMembers != null ? ` ${stats!.paidMembers}` : ''}` },
+          { key: 'lifetime', label: `終身${stats?.lifetimeMembers != null ? ` ${stats!.lifetimeMembers}` : ''}` },
           { key: 'products', label: `商品${stats?.totalProducts != null ? ` ${stats!.totalProducts}` : ''}` },
           { key: 'reports', label: `檢舉${(stats?.pendingReports ?? 0) > 0 ? ` ${stats!.pendingReports}` : ''}` },
           { key: 'complaints', label: '申訴' },
@@ -909,6 +956,8 @@ export default function AdminPage() {
         <>
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'members' && renderMembers()}
+          {activeTab === 'paid' && renderMembershipList('paid')}
+          {activeTab === 'lifetime' && renderMembershipList('lifetime')}
           {activeTab === 'products' && renderProducts()}
           {activeTab === 'reports' && renderReports()}
           {activeTab === 'complaints' && renderComplaints()}
@@ -1047,7 +1096,7 @@ export default function AdminPage() {
           <View style={styles.modalBox}>
             <View style={styles.modalHead}>
               <Text style={styles.modalTitle}>刪除已結標商品</Text>
-              <TouchableOpacity onPress={() => setDeleteProductModal(null)} hitSop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={() => setDeleteProductModal(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <X size={22} color="#888" />
               </TouchableOpacity>
             </View>
@@ -1082,7 +1131,7 @@ export default function AdminPage() {
           <View style={styles.modalBox}>
             <View style={styles.modalHead}>
               <Text style={styles.modalTitle}>批次清理已結標商品</Text>
-              <TouchableOpacity onPress={() => setBatchDeleteModal(false)} hitSop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={() => setBatchDeleteModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <X size={22} color="#888" />
               </TouchableOpacity>
             </View>
