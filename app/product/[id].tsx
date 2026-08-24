@@ -11,7 +11,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Clock, Users, ShoppingBag, Trophy, EyeOff, X, Crown, RotateCcw, Trash2, Truck, Tag, ShoppingCart, Package, Check, Minus, Plus, Flag } from 'lucide-react-native';
+import { Clock, Users, ShoppingBag, Trophy, EyeOff, X, Crown, RotateCcw, Trash2, Truck, Tag, ShoppingCart, Package, Check, Minus, Plus, Flag, Share2, Link as LinkIcon } from 'lucide-react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { supabase, callRpc, Product, Bid, Profile, sendAuctionNotifications } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { CountdownTimer } from '../../components/CountdownTimer';
@@ -45,6 +46,8 @@ export default function ProductDetail() {
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportSuccess, setReportSuccess] = useState(false);
   const [myReport, setMyReport] = useState<any>(null);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const { user, currentRole, sessionToken } = useAuth();
 
   const fetchData = useCallback(async () => {
@@ -652,6 +655,13 @@ export default function ProductDetail() {
           <View style={styles.sellerRow}>
             <ShoppingBag size={16} color="#888" />
             <Text style={styles.sellerName}>{seller?.name || '匿名賣家'}</Text>
+            <TouchableOpacity
+              style={styles.shareBtn}
+              onPress={() => { setShareModalVisible(true); setLinkCopied(false); }}
+            >
+              <Share2 size={12} color="#00D4AA" />
+              <Text style={styles.shareBtnText}>分享</Text>
+            </TouchableOpacity>
             {user && !isSeller && (
               <TouchableOpacity
                 style={[styles.reportBtn, myReport && styles.reportBtnDone]}
@@ -996,6 +1006,44 @@ export default function ProductDetail() {
               </TouchableOpacity>
             </View>
           )}
+
+          <Modal visible={shareModalVisible} transparent animationType="fade" onRequestClose={() => setShareModalVisible(false)}>
+            <View style={styles.modalOverlay}>
+              <View style={styles.shareModalBox}>
+                <TouchableOpacity style={styles.closeModal} onPress={() => setShareModalVisible(false)}>
+                  <X size={24} color="#fff" />
+                </TouchableOpacity>
+                <Text style={styles.shareModalTitle}>分享商品</Text>
+                <Text style={styles.shareModalHint}>掃描 QR Code 即可開啟此商品頁面</Text>
+                <View style={styles.shareQRBox}>
+                  <QRCode
+                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/product/${id}`}
+                    size={180}
+                    color="#0D0D1A"
+                    backgroundColor="#fff"
+                  />
+                </View>
+                <Text style={styles.shareProductName} numberOfLines={2}>{product.name}</Text>
+                <TouchableOpacity
+                  style={[styles.copyLinkBtn, linkCopied && { backgroundColor: 'rgba(0,212,170,0.2)', borderColor: '#00D4AA' }]}
+                  onPress={() => {
+                    const link = `${typeof window !== 'undefined' ? window.location.origin : ''}/product/${id}`;
+                    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                      navigator.clipboard.writeText(link).then(() => {
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 2000);
+                      }).catch(() => {});
+                    }
+                  }}
+                >
+                  {linkCopied ? <Check size={16} color="#00D4AA" /> : <LinkIcon size={16} color="#00D4AA" />}
+                  <Text style={[styles.copyLinkText, linkCopied && { color: '#00D4AA' }]}>
+                    {linkCopied ? '已複製連結' : '複製連結'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
 
           <Modal visible={relistModalVisible} transparent animationType="fade" onRequestClose={() => setRelistModalVisible(false)}>
             <View style={styles.modalOverlay}>
@@ -1483,4 +1531,27 @@ const styles = StyleSheet.create({
   reportSuccessText: { color: '#888', fontSize: 14, textAlign: 'center' },
   reportDoneBtn: { marginTop: 8, backgroundColor: '#00D4AA', borderRadius: 10, paddingHorizontal: 32, paddingVertical: 12 },
   reportDoneBtnText: { color: '#000', fontSize: 15, fontWeight: '700' },
+  shareBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(0,212,170,0.4)',
+    backgroundColor: 'rgba(0,212,170,0.08)', marginLeft: 'auto',
+  },
+  shareBtnText: { color: '#00D4AA', fontSize: 11, fontWeight: '600' },
+  shareModalBox: {
+    backgroundColor: '#1A1A2E', borderRadius: 24, padding: 24,
+    width: '90%', maxWidth: 360, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(0,212,170,0.3)',
+  },
+  shareModalTitle: { color: '#fff', fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  shareModalHint: { color: '#888', fontSize: 13, textAlign: 'center', marginBottom: 20 },
+  shareQRBox: { padding: 16, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  shareProductName: { color: '#fff', fontSize: 15, fontWeight: '600', textAlign: 'center', marginBottom: 16, lineHeight: 20 },
+  copyLinkBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: 'rgba(0,212,170,0.08)', borderRadius: 12,
+    paddingVertical: 12, paddingHorizontal: 24, width: '100%',
+    borderWidth: 1, borderColor: 'rgba(0,212,170,0.3)',
+  },
+  copyLinkText: { color: '#00D4AA', fontSize: 14, fontWeight: '600' },
 });
