@@ -39,6 +39,32 @@ setInterval(() => {
   }
 }, 60_000);
 
+// ── Stricter bucket for credential endpoints ──
+// Signup, login and password reset answer differently for an existing account,
+// so they are an enumeration oracle unless the attempt rate is bounded.
+const AUTH_WINDOW_MS = 60_000;
+const AUTH_MAX = 10;
+const AUTH_FUNCTIONS = new Set(["rpc_login", "rpc_register", "rpc_request_password_reset", "rpc_reset_password_v2", "rpc_verify_otp"]);
+const authBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function checkAuthRateLimit(ip: string): boolean {
+  const now = Date.now();
+  let bucket = authBuckets.get(ip);
+  if (!bucket || now > bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + AUTH_WINDOW_MS };
+    authBuckets.set(ip, bucket);
+  }
+  bucket.count++;
+  return bucket.count <= AUTH_MAX;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, bucket] of authBuckets) {
+    if (now > bucket.resetAt) authBuckets.delete(ip);
+  }
+}, 60_000);
+
 function getClientIp(req: Request): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     req.headers.get("x-real-ip") ||
@@ -127,6 +153,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (AUTH_FUNCTIONS.has(fn) && !checkAuthRateLimit(ip)) {
+      return new Response(
+        JSON.stringify({ data: null, error: { message: "嘗試次數過多，請稍後再試" } }),
+        { status: 429, headers: { ...hdrs, "Content-Type": "application/json", "Retry-After": "60" } }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -137,7 +170,11 @@ Deno.serve(async (req: Request) => {
 
     if (error) {
       console.error("rpc failed", fn, error);
-      const safeMsg = error.message || "操作失敗，請稍後再試";
+      // Only messages the application raised on purpose (RAISE EXCEPTION -> P0001)
+      // are user-facing. Every other Postgres error (constraint names, missing
+      // columns, permission denials) leaks internal detail, so it is replaced.
+      const isAppMessage = error.code === "P0001" && !!error.message;
+      const safeMsg = isAppMessage ? error.message : "操作失敗，請稍後再試";
       return new Response(
         JSON.stringify({ data: null, error: { message: safeMsg } }),
         { status: 200, headers: { ...hdrs, "Content-Type": "application/json" } }

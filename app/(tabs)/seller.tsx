@@ -306,7 +306,7 @@ export default function SellerPage() {
 
     setSubmitting(true);
     try {
-      const imageUrl = await uploadProductImage(selectedImage);
+      const imageUrl = await uploadProductImage(selectedImage, sessionToken ?? '');
 
       const { data: rpcResult, error } = await callRpc('rpc_seller_create_product_v2', {
         p_token: sessionToken,

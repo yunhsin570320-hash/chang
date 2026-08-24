@@ -295,62 +295,55 @@ export type Bid = {
   bidder?: Profile;
 };
 
-export async function uploadProductImage(source: string): Promise<string> {
+export async function uploadProductImage(
+  source: string,
+  sessionToken: string
+): Promise<string> {
   if (!source) return '';
   // Pass through remote URLs unchanged
   if (!source.startsWith('data:') && !source.startsWith('file://') && !source.startsWith('content://')) {
     return source;
   }
+  if (!sessionToken) throw new Error('登入已過期，請重新登入');
 
-  const path = `product-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const endpoint = `${supabaseUrl}/functions/v1/product-image`;
+  // The upload runs server-side: the session is validated and the file type and
+  // size are re-checked there, so the browser never writes to storage directly.
+  let res: Response;
 
   if (source.startsWith('data:')) {
-    // Decode base64 data URL — works on all browsers and React Native (atob is universal)
-    const commaIdx = source.indexOf(',');
-    const header = source.slice(0, commaIdx);
-    const base64Data = source.slice(commaIdx + 1);
-    const mime = header.match(/data:([^;]+)/)?.[1] ?? 'image/jpeg';
-    const ext = mime === 'image/png' ? 'png' : 'jpg';
-    const filename = `${path}.${ext}`;
-
-    const binary = atob(base64Data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    const { error } = await supabase.storage
-      .from('product-images')
-      .upload(filename, bytes.buffer as ArrayBuffer, { contentType: mime, upsert: false });
-
-    if (error) throw new Error(`Storage upload failed: ${error.message}`);
-
-    const { data } = supabase.storage.from('product-images').getPublicUrl(filename);
-    return data.publicUrl;
-  }
-
-  // file:// or content:// URI (Expo native) — use FormData with direct REST upload
-  const uriExt = source.split('?')[0].split('.').pop()?.toLowerCase() ?? 'jpg';
-  const mime = uriExt === 'png' ? 'image/png' : 'image/jpeg';
-  const filename = `${path}.${uriExt === 'png' ? 'png' : 'jpg'}`;
-
-  const formData = new FormData();
-  formData.append('file', { uri: source, type: mime, name: filename } as any);
-
-  const res = await fetch(
-    `${supabaseUrl}/storage/v1/object/product-images/${filename}`,
-    {
+    res = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
         apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ sessionToken, dataUrl: source }),
+    });
+  } else {
+    // file:// or content:// URI (Expo native)
+    const uriExt = source.split('?')[0].split('.').pop()?.toLowerCase() ?? 'jpg';
+    const mime = uriExt === 'png' ? 'image/png' : uriExt === 'webp' ? 'image/webp' : 'image/jpeg';
+    const formData = new FormData();
+    formData.append('sessionToken', sessionToken);
+    formData.append('file', { uri: source, type: mime, name: `upload.${uriExt}` } as any);
+
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
       },
       body: formData,
-    }
-  );
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.status.toString());
-    throw new Error(`Storage upload failed: ${msg}`);
+    });
   }
-  return `${supabaseUrl}/storage/v1/object/public/product-images/${filename}`;
+
+  const body = await res.json().catch(() => ({} as any));
+  if (!res.ok || !body?.url) {
+    throw new Error(body?.error || '圖片上傳失敗，請稍後再試');
+  }
+  return body.url as string;
 }
 
 export async function uploadPaymentProof(

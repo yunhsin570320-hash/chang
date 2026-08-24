@@ -68,12 +68,13 @@ export default function DeliveryPage() {
         .maybeSingle();
 
       if (deliveryError) {
-        setErrorMsg(`交付資料錯誤: ${deliveryError.message}`);
+        console.error('delivery load failed', deliveryError);
+        setErrorMsg('無法載入交付資料，請稍後再試');
         setLoading(false);
         return;
       }
       if (!deliveryData) {
-        setErrorMsg('找不到此交付記錄（ID 不存在）');
+        setErrorMsg('找不到此交付記錄');
         setLoading(false);
         return;
       }
@@ -105,7 +106,7 @@ export default function DeliveryPage() {
         return;
       }
       if (!buyerResult.data) {
-        setErrorMsg('找不到買家資料（winner_id 無對應 profile）');
+        setErrorMsg('找不到買家資料');
         setLoading(false);
         return;
       }
@@ -113,7 +114,8 @@ export default function DeliveryPage() {
       setProduct(productResult.data);
       setBuyer(buyerResult.data);
     } catch (error: any) {
-      setErrorMsg(`載入失敗: ${error?.message || '未知錯誤'}`);
+      console.error('delivery data load failed', error);
+      setErrorMsg('載入失敗，請稍後再試');
     } finally {
       setLoading(false);
     }
