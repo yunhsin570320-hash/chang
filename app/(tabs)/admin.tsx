@@ -1,19 +1,19 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ScrollView, TextInput, ActivityIndicator, Modal, Alert,
+  ScrollView, TextInput, ActivityIndicator, Modal, Alert, Image, Platform,
 } from 'react-native';
 import {
   ShieldCheck, Users, Package, Flag, AlertTriangle,
   Ban, CheckCircle, X, ChevronRight, Eye, Trash2,
-  RotateCcw, MessageSquare, Clock, TrendingUp,
+  RotateCcw, MessageSquare, Clock, TrendingUp, DollarSign, ImageIcon,
 } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { supabase, callRpc, Profile, Report, Product } from '../../lib/supabase';
+import { supabase, callRpc, Profile, Report, Product, PaymentRequest } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 
-type AdminTab = 'dashboard' | 'members' | 'products' | 'reports' | 'complaints' | 'actions';
+type AdminTab = 'dashboard' | 'members' | 'products' | 'reports' | 'complaints' | 'payments' | 'actions';
 
 type Stats = {
   totalUsers: number;
@@ -69,6 +69,7 @@ export default function AdminPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [actionLog, setActionLog] = useState<any[]>([]);
   const [complaints, setComplaints] = useState<any[]>([]);
+  const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [memberSearch, setMemberSearch] = useState('');
@@ -143,6 +144,13 @@ export default function AdminPage() {
           .order('created_at', { ascending: false });
         if (error) throw error;
         setComplaints(data || []);
+      } else if (tab === 'payments') {
+        const { data, error } = await supabase
+          .from('payment_requests')
+          .select('id, type, amount, payment_method, proof_image_url, status, admin_note, created_at, reviewed_at, user_id, user:profiles!user_id(id, name, email)')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        setPaymentRequests(data || []);
       } else if (tab === 'actions') {
         const { data, error } = await supabase
           .from('admin_actions')
@@ -449,6 +457,110 @@ export default function AdminPage() {
     </View>
   );
 
+  const [reviewPaymentModal, setReviewPaymentModal] = useState<{ requestId: string; approve: boolean; userName: string } | null>(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  const handleReviewPayment = (requestId: string, approve: boolean, userName: string) => {
+    setReviewNote('');
+    setReviewPaymentModal({ requestId, approve, userName });
+  };
+
+  const confirmReviewPayment = async () => {
+    if (!reviewPaymentModal || !sessionToken) return;
+    setReviewSubmitting(true);
+    try {
+      const { data, error } = await callRpc('rpc_admin_review_payment_request', {
+        p_token: sessionToken,
+        p_request_id: reviewPaymentModal.requestId,
+        p_approve: reviewPaymentModal.approve,
+        p_note: reviewNote.trim() || null,
+      });
+      if (error || data?.error) {
+        Alert.alert('操作失敗', data?.error || '請稍後再試');
+        return;
+      }
+      setReviewPaymentModal(null);
+      fetchTabData('payments');
+      fetchStats();
+    } catch {
+      Alert.alert('操作失敗', '請稍後再試');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const renderPayments = () => (
+    <FlatList
+      data={paymentRequests}
+      keyExtractor={(p) => p.id}
+      contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
+      renderItem={({ item: p }) => (
+        <View style={styles.reportCard}>
+          <View style={styles.reportHeader}>
+            <View style={[styles.reportTypeBadge, { backgroundColor: p.type === 'vip_upgrade' ? 'rgba(255,215,0,0.15)' : 'rgba(0,212,170,0.15)' }]}>
+              <Text style={[styles.reportTypeText, { color: p.type === 'vip_upgrade' ? '#FFD700' : '#00D4AA' }]}>
+                {p.type === 'vip_upgrade' ? 'VIP 升級費' : '競標保證金'} · NT${p.amount}
+              </Text>
+            </View>
+            <View style={[styles.reportStatusBadge,
+              p.status === 'pending' ? styles.pendingStatus :
+              p.status === 'approved' ? styles.resolvedStatus : styles.dismissedStatus
+            ]}>
+              <Text style={styles.reportStatusText}>
+                {p.status === 'pending' ? '待審核' : p.status === 'approved' ? '已通過' : '已駁回'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.reportParty}>
+            <Text style={styles.reportPartyLabel}>會員：</Text>
+            {p.user?.name} ({p.user?.email})
+          </Text>
+          {p.payment_method && (
+            <Text style={styles.reportParty}>
+              <Text style={styles.reportPartyLabel}>付款方式：</Text>
+              {p.payment_method}
+            </Text>
+          )}
+          <Text style={styles.reportDate}>{new Date(p.created_at).toLocaleString('zh-TW')}</Text>
+
+          {/* Proof image */}
+          <TouchableOpacity onPress={() => {
+            if (Platform.OS === 'web') {
+              window.open(p.proof_image_url, '_blank');
+            }
+          }}>
+            {/* @ts-ignore */}
+            <Image source={{ uri: p.proof_image_url }} style={{ width: '100%', height: 180, borderRadius: 10, marginTop: 10, marginBottom: 8 }} resizeMode="cover" />
+          </TouchableOpacity>
+
+          {p.status === 'pending' && (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { flex: 1, marginBottom: 0, padding: 10 }]}
+                onPress={() => handleReviewPayment(p.id, true, p.user?.name || '會員')}
+              >
+                <Text style={styles.confirmBtnText}>通過並升級</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { flex: 1, marginBottom: 0, padding: 10, backgroundColor: 'rgba(255,107,107,0.2)', borderWidth: 1, borderColor: 'rgba(255,107,107,0.4)' }]}
+                onPress={() => handleReviewPayment(p.id, false, p.user?.name || '會員')}
+              >
+                <Text style={[styles.confirmBtnText, { color: '#FF6B6B' }]}>駁回</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {p.status !== 'pending' && p.admin_note && (
+            <Text style={[styles.reportReason, { color: '#888', marginTop: 4 }]}>
+              審核備註：{p.admin_note}
+            </Text>
+          )}
+        </View>
+      )}
+      ListEmptyComponent={<View style={styles.emptyState}><Text style={styles.emptyText}>暫無繳費申請</Text></View>}
+    />
+  );
+
   const [resolveModal, setResolveModal] = useState<{ complaintId: string; approve: boolean } | null>(null);
   const [resolveResponse, setResolveResponse] = useState('');
   const [resolveSubmitting, setResolveSubmitting] = useState(false);
@@ -565,6 +677,7 @@ export default function AdminPage() {
           { key: 'products', label: `商品 (${stats?.totalProducts ?? '…'})` },
           { key: 'reports', label: `檢舉 ${(stats?.pendingReports ?? 0) > 0 ? `(${stats?.pendingReports})` : ''}` },
           { key: 'complaints', label: '申訴' },
+          { key: 'payments', label: `繳費審核 ${(paymentRequests.filter(p => p.status === 'pending').length) > 0 ? `(${paymentRequests.filter(p => p.status === 'pending').length})` : ''}` },
           { key: 'actions', label: '操作紀錄' },
         ] as { key: AdminTab; label: string }[]).map(t => (
           <TouchableOpacity
@@ -588,6 +701,7 @@ export default function AdminPage() {
           {activeTab === 'products' && renderProducts()}
           {activeTab === 'reports' && renderReports()}
           {activeTab === 'complaints' && renderComplaints()}
+          {activeTab === 'payments' && renderPayments()}
           {activeTab === 'actions' && renderActionLog()}
         </>
       )}
@@ -672,6 +786,42 @@ export default function AdminPage() {
               {resolveSubmitting ? <ActivityIndicator color="#000" /> : (
                 <Text style={[styles.confirmBtnText, !resolveModal?.approve && { color: '#FF6B6B' }]}>
                   {resolveModal?.approve ? '確認解鎖' : '確認駁回'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Review Payment Modal */}
+      <Modal visible={!!reviewPaymentModal} transparent animationType="slide" onRequestClose={() => setReviewPaymentModal(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHead}>
+              <Text style={styles.modalTitle}>{reviewPaymentModal?.approve ? '通過繳費申請' : '駁回繳費申請'}</Text>
+              <TouchableOpacity onPress={() => setReviewPaymentModal(null)}>
+                <X size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalTargetName}>{reviewPaymentModal?.userName}</Text>
+            <Text style={styles.modalLabel}>審核備註</Text>
+            <TextInput
+              style={styles.reasonInput}
+              value={reviewNote}
+              onChangeText={setReviewNote}
+              placeholder={reviewPaymentModal?.approve ? '可填寫備註（選填）' : '請說明駁回原因'}
+              placeholderTextColor="#444"
+              multiline
+              numberOfLines={3}
+            />
+            <TouchableOpacity
+              style={[styles.confirmBtn, (reviewSubmitting) && styles.confirmBtnDisabled, !reviewPaymentModal?.approve && { backgroundColor: 'rgba(255,107,107,0.2)' }]}
+              onPress={confirmReviewPayment}
+              disabled={reviewSubmitting}
+            >
+              {reviewSubmitting ? <ActivityIndicator color="#000" /> : (
+                <Text style={[styles.confirmBtnText, !reviewPaymentModal?.approve && { color: '#FF6B6B' }]}>
+                  {reviewPaymentModal?.approve ? '確認通過' : '確認駁回'}
                 </Text>
               )}
             </TouchableOpacity>

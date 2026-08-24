@@ -128,6 +128,18 @@ export type Product = {
   winner?: Profile | null;
 };
 
+export type PaymentRequest = {
+  id: string;
+  type: 'vip_upgrade' | 'vip_deposit';
+  amount: number;
+  payment_method?: string | null;
+  proof_image_url: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note?: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+};
+
 export type Bid = {
   id: string;
   product_id: string;
@@ -193,6 +205,61 @@ export async function uploadProductImage(source: string): Promise<string> {
     throw new Error(`Storage upload failed: ${msg}`);
   }
   return `${supabaseUrl}/storage/v1/object/public/product-images/${filename}`;
+}
+
+export async function uploadPaymentProof(source: string): Promise<string> {
+  if (!source) return '';
+  if (!source.startsWith('data:') && !source.startsWith('file://') && !source.startsWith('content://')) {
+    return source;
+  }
+
+  const path = `proof-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  if (source.startsWith('data:')) {
+    const commaIdx = source.indexOf(',');
+    const header = source.slice(0, commaIdx);
+    const base64Data = source.slice(commaIdx + 1);
+    const mime = header.match(/data:([^;]+)/)?.[1] ?? 'image/jpeg';
+    const ext = mime === 'image/png' ? 'png' : 'jpg';
+    const filename = `${path}.${ext}`;
+
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    const { error } = await supabase.storage
+      .from('payment-proofs')
+      .upload(filename, bytes.buffer as ArrayBuffer, { contentType: mime, upsert: false });
+
+    if (error) throw new Error(`Storage upload failed: ${error.message}`);
+
+    const { data } = supabase.storage.from('payment-proofs').getPublicUrl(filename);
+    return data.publicUrl;
+  }
+
+  const uriExt = source.split('?')[0].split('.').pop()?.toLowerCase() ?? 'jpg';
+  const mime = uriExt === 'png' ? 'image/png' : 'image/jpeg';
+  const filename = `${path}.${uriExt === 'png' ? 'png' : 'jpg'}`;
+
+  const formData = new FormData();
+  formData.append('file', { uri: source, type: mime, name: filename } as any);
+
+  const res = await fetch(
+    `${supabaseUrl}/storage/v1/object/payment-proofs/${filename}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        apikey: supabaseAnonKey,
+      },
+      body: formData,
+    }
+  );
+  if (!res.ok) {
+    const msg = await res.text().catch(() => res.status.toString());
+    throw new Error(`Storage upload failed: ${msg}`);
+  }
+  return `${supabaseUrl}/storage/v1/object/public/payment-proofs/${filename}`;
 }
 
 export async function sendAuctionNotifications(

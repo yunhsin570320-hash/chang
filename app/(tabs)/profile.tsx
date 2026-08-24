@@ -11,13 +11,16 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  Image,
+  Platform,
 } from 'react-native';
 import {
   User, Package, Crown, Bell, BellOff, Phone, CreditCard,
   MapPin, Building2, Edit3, Check, X, ChevronRight, Trophy, ShieldCheck, ShieldAlert,
-  Lock, Unlock, AlertCircle, Zap,
+  Lock, Unlock, AlertCircle, Zap, Camera, Upload, Clock,
 } from 'lucide-react-native';
-import { supabase, callRpc, Bid, Product, Notification } from '../../lib/supabase';
+import { supabase, callRpc, Bid, Product, Notification, uploadPaymentProof, PaymentRequest } from '../../lib/supabase';
+import { WebCamera } from '../../components/WebCamera';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -61,8 +64,14 @@ export default function ProfilePage() {
   const { user, currentRole, switchRole, logout, canSwitchRoles, refreshUser, sessionToken } = useAuth();
   const router = useRouter();
 
-  // Membership / upgrade state
-  const [upgrading, setUpgrading] = useState(false);
+  // Payment request state
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [paymentType, setPaymentType] = useState<'vip_upgrade' | 'vip_deposit'>('vip_upgrade');
+  const [paymentProof, setPaymentProof] = useState<string | null>(null);
+  const [cameraVisible, setCameraVisible] = useState(false);
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [complaintModal, setComplaintModal] = useState(false);
   const [complaintReason, setComplaintReason] = useState('');
   const [complaintSubmitting, setComplaintSubmitting] = useState(false);
@@ -82,7 +91,7 @@ export default function ProfilePage() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const [bidsResult, notifResult] = await Promise.all([
+      const [bidsResult, notifResult, paymentResult] = await Promise.all([
         supabase
           .from('bids')
           .select('*, product:products(id, name, status, end_time, winner_id, winning_amount, image_url)')
@@ -94,9 +103,15 @@ export default function ProfilePage() {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(50),
+        supabase
+          .from('payment_requests')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
       ]);
       setMyBids(bidsResult.data || []);
       setNotifications(notifResult.data || []);
+      setPaymentRequests((paymentResult.data || []) as PaymentRequest[]);
     } catch (error) {
       console.error('Error fetching profile data:', error);
     } finally {
@@ -227,47 +242,61 @@ export default function ProfilePage() {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   };
 
-  const handleUpgradeVip = async () => {
-    if (!sessionToken) return;
-    setUpgrading(true);
+  const openPaymentModal = (type: 'vip_upgrade' | 'vip_deposit') => {
+    setPaymentType(type);
+    setPaymentProof(null);
+    setPaymentError(null);
+    setPaymentModalVisible(true);
+  };
+
+  const handleCaptureProof = (dataUrl: string) => {
+    setPaymentProof(dataUrl);
+    setCameraVisible(false);
+  };
+
+  const handleFileSelect = () => {
+    if (Platform.OS !== 'web') return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => setPaymentProof(reader.result as string);
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  };
+
+  const handleSubmitPayment = async () => {
+    if (!sessionToken || !paymentProof) return;
+    setSubmittingPayment(true);
+    setPaymentError(null);
     try {
-      const { data, error } = await callRpc('rpc_upgrade_vip_seller', {
+      const proofUrl = await uploadPaymentProof(paymentProof);
+      const { data, error } = await callRpc('rpc_submit_payment_request', {
         p_token: sessionToken,
+        p_type: paymentType,
         p_payment_method: user?.payment_method || null,
+        p_proof_image_url: proofUrl,
       });
       if (error || data?.error) {
-        Alert.alert('升級失敗', data?.error || '請稍後再試');
+        setPaymentError(data?.error || '提交失敗，請稍後再試');
         return;
       }
-      await refreshUser();
-      Alert.alert('升級成功', '您已升級為 VIP 會員，商品上架無限制！');
-    } catch {
-      Alert.alert('升級失敗', '請稍後再試');
+      setPaymentModalVisible(false);
+      await fetchData();
+      Alert.alert('已提交', '繳費申請已送出，請等候管理員審核。審核通過後將自動升級。');
+    } catch (e: any) {
+      setPaymentError('提交失敗：' + (e.message || '請稍後再試'));
     } finally {
-      setUpgrading(false);
+      setSubmittingPayment(false);
     }
   };
 
-  const handlePayDeposit = async () => {
-    if (!sessionToken) return;
-    setUpgrading(true);
-    try {
-      const { data, error } = await callRpc('rpc_pay_vip_deposit', {
-        p_token: sessionToken,
-        p_payment_method: user?.payment_method || null,
-      });
-      if (error || data?.error) {
-        Alert.alert('繳費失敗', data?.error || '請稍後再試');
-        return;
-      }
-      await refreshUser();
-      Alert.alert('保證金已繳納', '您現在可以在競價廳參與競標了！');
-    } catch {
-      Alert.alert('繳費失敗', '請稍後再試');
-    } finally {
-      setUpgrading(false);
-    }
-  };
+  const getPendingRequest = (type: 'vip_upgrade' | 'vip_deposit') =>
+    paymentRequests.find(r => r.type === type && r.status === 'pending');
 
   const handleFileComplaint = async () => {
     if (!sessionToken || !complaintReason.trim()) return;
@@ -554,33 +583,64 @@ export default function ProfilePage() {
                     </View>
                   </View>
 
-                  {/* Upgrade buttons */}
+                  {/* Upgrade / deposit buttons */}
                   {user.membership_tier !== 'vip' && (
-                    <TouchableOpacity
-                      style={styles.upgradeBtn}
-                      onPress={handleUpgradeVip}
-                      disabled={upgrading}
-                    >
-                      {upgrading ? <ActivityIndicator color="#000" /> : (
-                        <><Zap size={16} color="#000" /><Text style={styles.upgradeBtnText}>升級 VIP 會員 · NT$500</Text></>
-                      )}
-                    </TouchableOpacity>
+                    (() => {
+                      const pending = getPendingRequest('vip_upgrade');
+                      if (pending) {
+                        return (
+                          <View style={styles.pendingBox}>
+                            <Clock size={16} color="#FFD700" />
+                            <Text style={styles.pendingBoxText}>VIP 升級費 NT$500 — 審核中</Text>
+                          </View>
+                        );
+                      }
+                      return (
+                        <TouchableOpacity
+                          style={styles.upgradeBtn}
+                          onPress={() => openPaymentModal('vip_upgrade')}
+                        >
+                          <Zap size={16} color="#000" />
+                          <Text style={styles.upgradeBtnText}>升級 VIP 會員 · NT$500</Text>
+                        </TouchableOpacity>
+                      );
+                    })()
                   )}
                   {!user.vip_deposit_paid && (
-                    <TouchableOpacity
-                      style={styles.depositBtn}
-                      onPress={handlePayDeposit}
-                      disabled={upgrading}
-                    >
-                      {upgrading ? <ActivityIndicator color="#FFD700" /> : (
-                        <><ShieldCheck size={16} color="#FFD700" /><Text style={styles.depositBtnText}>繳納競標保證金 · NT$1000</Text></>
-                      )}
-                    </TouchableOpacity>
+                    (() => {
+                      const pending = getPendingRequest('vip_deposit');
+                      if (pending) {
+                        return (
+                          <View style={styles.pendingBox}>
+                            <Clock size={16} color="#FFD700" />
+                            <Text style={styles.pendingBoxText}>競標保證金 NT$1000 — 審核中</Text>
+                          </View>
+                        );
+                      }
+                      return (
+                        <TouchableOpacity
+                          style={styles.depositBtn}
+                          onPress={() => openPaymentModal('vip_deposit')}
+                        >
+                          <ShieldCheck size={16} color="#FFD700" />
+                          <Text style={styles.depositBtnText}>繳納競標保證金 · NT$1000</Text>
+                        </TouchableOpacity>
+                      );
+                    })()
                   )}
                   {user.membership_tier === 'vip' && user.vip_deposit_paid && (
                     <View style={styles.allUnlocked}>
                       <Check size={16} color="#00D4AA" />
                       <Text style={styles.allUnlockedText}>已享有全部會員權益</Text>
+                    </View>
+                  )}
+                  {paymentRequests.filter(r => r.status === 'rejected').length > 0 && (
+                    <View style={styles.rejectedNotice}>
+                      <AlertCircle size={14} color="#FF6B6B" />
+                      <Text style={styles.rejectedNoticeText}>
+                        有繳費申請未通過，請重新提交{'\n'}
+                        {paymentRequests.filter(r => r.status === 'rejected').slice(-1)[0]?.admin_note || ''}
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -593,6 +653,95 @@ export default function ProfilePage() {
           </TouchableOpacity>
         </ScrollView>
       )}
+
+      {/* Payment modal */}
+      <Modal visible={paymentModalVisible} transparent animationType="slide" onRequestClose={() => setPaymentModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {paymentType === 'vip_upgrade' ? '升級 VIP 會員' : '繳納競標保證金'}
+              </Text>
+              <TouchableOpacity onPress={() => setPaymentModalVisible(false)}>
+                <X size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Amount */}
+              <View style={styles.paymentAmountBox}>
+                <Text style={styles.paymentAmountLabel}>應繳金額</Text>
+                <Text style={styles.paymentAmountValue}>
+                  NT${paymentType === 'vip_upgrade' ? '500' : '1,000'}
+                </Text>
+              </View>
+
+              {/* Payment instructions */}
+              <View style={styles.paymentInstructions}>
+                <Text style={styles.paymentInstructionsTitle}>繳費方式</Text>
+                <Text style={styles.paymentInstructionsText}>
+                  1. 銀行匯款 / 轉帳至以下帳戶{'\n'}
+                  <Text style={styles.paymentAccountLine}>   銀行：XX 銀行 (代碼 000){'\n'}
+                  {'   '}帳號：000-0000-0000{'\n'}
+                  {'   '}戶名：OOO</Text>{'\n'}
+                  2. 或至超商使用代碼繳費{'\n'}
+                  3. 繳費後請拍攝 / 截圖付款證明{'\n'}
+                  4. 上傳證明並送出，等候管理員審核
+                </Text>
+                <Text style={styles.paymentInstructionsNote}>
+                  審核通過後將自動升級，無需額外操作。
+                </Text>
+              </View>
+
+              {/* Upload proof */}
+              <Text style={styles.modalLabel}>上傳付款證明 *</Text>
+              {paymentProof ? (
+                <View style={styles.proofPreview}>
+                  <Image source={{ uri: paymentProof }} style={styles.proofImage} resizeMode="cover" />
+                  <TouchableOpacity style={styles.proofRetakeBtn} onPress={() => setPaymentProof(null)}>
+                    <X size={16} color="#FF6B6B" />
+                    <Text style={styles.proofRetakeText}>重新拍攝</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.uploadOptions}>
+                  <TouchableOpacity style={styles.uploadBtn} onPress={() => setCameraVisible(true)}>
+                    <Camera size={20} color="#00D4AA" />
+                    <Text style={styles.uploadBtnText}>拍照</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.uploadBtn} onPress={handleFileSelect}>
+                    <Upload size={20} color="#00D4AA" />
+                    <Text style={styles.uploadBtnText}>上傳檔案</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {paymentError && (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>{paymentError}</Text>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[styles.saveBtn, (!paymentProof || submittingPayment) && { opacity: 0.5 }]}
+                onPress={handleSubmitPayment}
+                disabled={!paymentProof || submittingPayment}
+              >
+                {submittingPayment ? <ActivityIndicator color="#000" /> : (
+                  <><Check size={18} color="#000" /><Text style={styles.saveBtnText}>送出繳費申請</Text></>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* WebCamera for payment proof */}
+      <WebCamera
+        visible={cameraVisible}
+        onCapture={handleCaptureProof}
+        onClose={() => setCameraVisible(false)}
+      />
 
       {/* Complaint modal */}
       <Modal visible={complaintModal} transparent animationType="slide" onRequestClose={() => setComplaintModal(false)}>
@@ -1107,4 +1256,43 @@ const styles = StyleSheet.create({
     marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,107,107,0.3)',
   },
   errorText: { color: '#FF6B6B', fontSize: 13, textAlign: 'center' },
+  // Payment modal styles
+  paymentAmountBox: {
+    alignItems: 'center', paddingVertical: 16, marginBottom: 16,
+    backgroundColor: 'rgba(255,215,0,0.08)', borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.2)',
+  },
+  paymentAmountLabel: { color: '#888', fontSize: 13, marginBottom: 4 },
+  paymentAmountValue: { color: '#FFD700', fontSize: 28, fontWeight: '800' },
+  paymentInstructions: {
+    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 16, marginBottom: 16,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  paymentInstructionsTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 8 },
+  paymentInstructionsText: { color: '#aaa', fontSize: 13, lineHeight: 22 },
+  paymentAccountLine: { color: '#00D4AA', fontSize: 13 },
+  paymentInstructionsNote: { color: '#FFD700', fontSize: 12, marginTop: 8 },
+  uploadOptions: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  uploadBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: 'rgba(0,212,170,0.1)', borderRadius: 12, padding: 16,
+    borderWidth: 1, borderColor: 'rgba(0,212,170,0.3)',
+  },
+  uploadBtnText: { color: '#00D4AA', fontSize: 14, fontWeight: '600' },
+  proofPreview: { marginBottom: 16, alignItems: 'center' },
+  proofImage: { width: '100%', height: 200, borderRadius: 12, marginBottom: 8 },
+  proofRetakeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  proofRetakeText: { color: '#FF6B6B', fontSize: 13, fontWeight: '600' },
+  pendingBox: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: 'rgba(255,215,0,0.1)', padding: 14, borderRadius: 12, marginBottom: 10,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.3)',
+  },
+  pendingBoxText: { color: '#FFD700', fontSize: 14, fontWeight: '600' },
+  rejectedNotice: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 10,
+    backgroundColor: 'rgba(255,107,107,0.08)', borderRadius: 8, padding: 10,
+    borderWidth: 1, borderColor: 'rgba(255,107,107,0.2)',
+  },
+  rejectedNoticeText: { color: '#FF6B6B', fontSize: 12, flex: 1, lineHeight: 18 },
 });
