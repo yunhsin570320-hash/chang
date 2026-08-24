@@ -65,6 +65,7 @@ export default function SellerPage() {
   const [directPrice, setDirectPrice] = useState('');
   const [stockQuantity, setStockQuantity] = useState('1');
   const [shippingFee, setShippingFee] = useState('0');
+  const [formMessage, setFormMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const { user, currentRole, sessionToken } = useAuth();
 
   useFocusEffect(
@@ -263,33 +264,34 @@ export default function SellerPage() {
   };
 
   const handleAddProduct = async () => {
+    setFormMessage(null);
     if (!user) return;
 
     if (user.is_blocked) {
-      Alert.alert('帳號已停用', `您的帳號已被管理員停用，無法上架商品。\n原因：${user.blocked_reason || '違反使用規範'}`);
+      setFormMessage({ type: 'error', text: `帳號已停用：${user.blocked_reason || '違反使用規範'}` });
       return;
     }
 
     if (!name.trim()) {
-      Alert.alert('錯誤', '請輸入商品名稱');
+      setFormMessage({ type: 'error', text: '請輸入商品名稱' });
       return;
     }
 
     if (listingType === 'auction') {
       const durationMinutes = parseInt(duration, 10);
       if (isNaN(durationMinutes) || durationMinutes <= 0) {
-        Alert.alert('錯誤', '請輸入有效的結標時間（分鐘）');
+        setFormMessage({ type: 'error', text: '請輸入有效的結標時間（分鐘）' });
         return;
       }
     } else {
       const price = parseInt(directPrice, 10);
       if (isNaN(price) || price <= 0) {
-        Alert.alert('錯誤', '請輸入有效的直購價格');
+        setFormMessage({ type: 'error', text: '請輸入有效的直購價格' });
         return;
       }
       const qty = parseInt(stockQuantity, 10);
       if (isNaN(qty) || qty <= 0) {
-        Alert.alert('錯誤', '請輸入有效的庫存數量');
+        setFormMessage({ type: 'error', text: '請輸入有效的庫存數量' });
         return;
       }
     }
@@ -320,6 +322,7 @@ export default function SellerPage() {
       });
       if (error || rpcResult?.error) throw error || new Error(rpcResult.error);
 
+      setFormMessage({ type: 'success', text: '商品上架成功！' });
       setName('');
       setDescription('');
       setDuration('60');
@@ -329,10 +332,11 @@ export default function SellerPage() {
       setShippingFee('0');
       setSelectedImage('');
       fetchProducts();
+      setTimeout(() => setFormMessage(null), 3000);
     } catch (error: any) {
       console.error('Error adding product:', error);
       const msg = typeof error?.message === 'string' ? error.message : '商品上架失敗，請稍後再試';
-      Alert.alert('上架失敗', msg);
+      setFormMessage({ type: 'error', text: msg });
     } finally {
       setSubmitting(false);
     }
@@ -655,6 +659,20 @@ export default function SellerPage() {
         </View>
 
         <View style={styles.formContent}>
+          {formMessage && (
+            <View style={[
+              styles.formMessage,
+              formMessage.type === 'error' ? styles.formMessageError : styles.formMessageSuccess,
+            ]}>
+              <Text style={formMessage.type === 'error' ? styles.formMessageErrorText : styles.formMessageSuccessText}>
+                {formMessage.text}
+              </Text>
+              <TouchableOpacity onPress={() => setFormMessage(null)}>
+                <X size={16} color={formMessage.type === 'error' ? '#FF6B6B' : '#00D4AA'} />
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Listing type toggle */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>上架類型</Text>
@@ -1052,6 +1070,18 @@ const styles = StyleSheet.create({
   },
   formTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
   formContent: { padding: 16, gap: 16 },
+  formMessage: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderRadius: 10, padding: 12, gap: 8,
+  },
+  formMessageError: {
+    backgroundColor: 'rgba(255,107,107,0.15)', borderWidth: 1, borderColor: 'rgba(255,107,107,0.3)',
+  },
+  formMessageSuccess: {
+    backgroundColor: 'rgba(0,212,170,0.15)', borderWidth: 1, borderColor: 'rgba(0,212,170,0.3)',
+  },
+  formMessageErrorText: { color: '#FF6B6B', fontSize: 14, flex: 1 },
+  formMessageSuccessText: { color: '#00D4AA', fontSize: 14, flex: 1 },
   inputGroup: { gap: 8 },
   inputLabel: { fontSize: 13, color: '#888', fontWeight: '500' },
   input: {
