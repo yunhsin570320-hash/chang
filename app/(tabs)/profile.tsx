@@ -31,7 +31,7 @@ interface BidWithProduct extends Bid {
 
 type ProfileTab = 'info' | 'bids' | 'notifications';
 
-const PAYMENT_OPTIONS = ['銀行匯款', 'Line Pay', 'Apple Pay', '超商代碼繳費', '現金'];
+const PAYMENT_OPTIONS = ['銀行匯款', 'Line Pay', 'Apple Pay', '現金'];
 
 function validateTWPhone(phone: string): boolean {
   return /^09\d{8}$/.test(phone.replace(/[\s\-()]/g, ''));
@@ -693,13 +693,20 @@ export default function ProfilePage() {
               {/* Payment instructions */}
               <View style={styles.paymentInstructions}>
                 <Text style={styles.paymentInstructionsTitle}>繳費方式</Text>
-                <Text style={styles.paymentInstructionsText}>
-                  1. 銀行匯款 / 轉帳至以下帳戶{'\n'}
-                  <Text style={styles.paymentAccountLine}>   銀行：{siteSettings.payment_bank_name || '待設定'}{'\n'}
-                  {'   '}帳號：{siteSettings.payment_account || '待設定'}{'\n'}
-                  {'   '}戶名：{siteSettings.payment_holder || '待設定'}</Text>{'\n'}
-                  {(siteSettings.payment_instructions || '2. 或至超商使用代碼繳費\n3. 繳費後請拍攝 / 截圖付款證明\n4. 上傳證明並送出，等候管理員審核').split('\n').map((line, i) => <Text key={i}>{line}{'\n'}</Text>)}
+                <Text style={styles.paymentAccountLine}>
+                  銀行：{siteSettings.payment_bank_name || '待設定'}{'\n'}
+                  帳號：{siteSettings.payment_account || '待設定'}{'\n'}
+                  戶名：{siteSettings.payment_holder || '待設定'}
                 </Text>
+                {siteSettings.payment_instructions ? (
+                  <Text style={styles.paymentInstructionsText}>
+                    {siteSettings.payment_instructions.split('\n').map((line, i) => <Text key={i}>{line}{'\n'}</Text>)}
+                  </Text>
+                ) : (
+                  <Text style={styles.paymentInstructionsText}>
+                    {'1. 銀行匯款 / 轉帳至以上帳戶\n2. 繳費後請拍攝 / 截圖付款證明\n3. 上傳證明並送出，等候管理員審核'}
+                  </Text>
+                )}
                 <Text style={styles.paymentInstructionsNote}>
                   審核通過後將自動升級，無需額外操作。
                 </Text>
