@@ -925,7 +925,8 @@ export default function AdminPage() {
   return (
     <View style={styles.container}>
       {/* Tab bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBarScroll} contentContainerStyle={styles.tabBarContent}>
+      <View style={styles.tabBarScroll}>
+        <View style={styles.tabBarContent}>
         {([
           { key: 'dashboard', label: '總覽' },
           { key: 'members', label: `會員${stats?.totalUsers != null ? ` ${stats!.totalUsers}` : ''}` },
@@ -946,7 +947,8 @@ export default function AdminPage() {
             <Text style={[styles.tabText, activeTab === t.key && styles.tabTextActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+        </View>
+      </View>
 
       {loading ? (
         <View style={styles.loadingBox}>
@@ -1176,8 +1178,8 @@ const styles = StyleSheet.create({
   blocked: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0D0D1A' },
   blockedText: { color: '#FF6B6B', fontSize: 18, marginTop: 12 },
   loadingBox: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  tabBarScroll: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)', maxHeight: 48 },
-  tabBarContent: { paddingHorizontal: 8, gap: 4, alignItems: 'center' },
+  tabBarScroll: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 8, paddingVertical: 4 },
+  tabBarContent: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, alignItems: 'center' },
   tab: { paddingHorizontal: 10, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: '#00D4AA' },
   tabText: { color: '#666', fontSize: 12, fontWeight: '600' },
