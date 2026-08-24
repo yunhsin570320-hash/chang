@@ -72,6 +72,7 @@ export default function ProfilePage() {
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
+  const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
   const [complaintModal, setComplaintModal] = useState(false);
   const [complaintReason, setComplaintReason] = useState('');
   const [complaintSubmitting, setComplaintSubmitting] = useState(false);
@@ -91,7 +92,7 @@ export default function ProfilePage() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const [bidsResult, notifResult, paymentResult] = await Promise.all([
+      const [bidsResult, notifResult, paymentResult, settingsResult] = await Promise.all([
         supabase
           .from('bids')
           .select('*, product:products(id, name, status, end_time, winner_id, winning_amount, image_url)')
@@ -108,10 +109,16 @@ export default function ProfilePage() {
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }),
+        supabase.from('site_settings').select('key, value'),
       ]);
       setMyBids(bidsResult.data || []);
       setNotifications(notifResult.data || []);
       setPaymentRequests((paymentResult.data || []) as PaymentRequest[]);
+      if (settingsResult.data) {
+        const map: Record<string, string> = {};
+        for (const row of settingsResult.data as any[]) map[row.key] = row.value;
+        setSiteSettings(map);
+      }
     } catch (error) {
       console.error('Error fetching profile data:', error);
     } finally {
@@ -681,12 +688,10 @@ export default function ProfilePage() {
                 <Text style={styles.paymentInstructionsTitle}>繳費方式</Text>
                 <Text style={styles.paymentInstructionsText}>
                   1. 銀行匯款 / 轉帳至以下帳戶{'\n'}
-                  <Text style={styles.paymentAccountLine}>   銀行：XX 銀行 (代碼 000){'\n'}
-                  {'   '}帳號：000-0000-0000{'\n'}
-                  {'   '}戶名：OOO</Text>{'\n'}
-                  2. 或至超商使用代碼繳費{'\n'}
-                  3. 繳費後請拍攝 / 截圖付款證明{'\n'}
-                  4. 上傳證明並送出，等候管理員審核
+                  <Text style={styles.paymentAccountLine}>   銀行：{siteSettings.payment_bank_name || '待設定'}{'\n'}
+                  {'   '}帳號：{siteSettings.payment_account || '待設定'}{'\n'}
+                  {'   '}戶名：{siteSettings.payment_holder || '待設定'}</Text>{'\n'}
+                  {(siteSettings.payment_instructions || '2. 或至超商使用代碼繳費\n3. 繳費後請拍攝 / 截圖付款證明\n4. 上傳證明並送出，等候管理員審核').split('\n').map((line, i) => <Text key={i}>{line}{'\n'}</Text>)}
                 </Text>
                 <Text style={styles.paymentInstructionsNote}>
                   審核通過後將自動升級，無需額外操作。

@@ -13,7 +13,7 @@ import { supabase, callRpc, Profile, Report, Product, PaymentRequest } from '../
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 
-type AdminTab = 'dashboard' | 'members' | 'products' | 'reports' | 'complaints' | 'payments' | 'actions';
+type AdminTab = 'dashboard' | 'members' | 'products' | 'reports' | 'complaints' | 'payments' | 'settings' | 'actions';
 
 type Stats = {
   totalUsers: number;
@@ -70,6 +70,13 @@ export default function AdminPage() {
   const [actionLog, setActionLog] = useState<any[]>([]);
   const [complaints, setComplaints] = useState<any[]>([]);
   const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
+  const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
+  const [editBankName, setEditBankName] = useState('');
+  const [editAccount, setEditAccount] = useState('');
+  const [editHolder, setEditHolder] = useState('');
+  const [editInstructions, setEditInstructions] = useState('');
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [memberSearch, setMemberSearch] = useState('');
@@ -151,6 +158,17 @@ export default function AdminPage() {
           .order('created_at', { ascending: false });
         if (error) throw error;
         setPaymentRequests(data || []);
+      } else if (tab === 'settings') {
+        const { data, error } = await supabase.from('site_settings').select('key, value');
+        if (error) throw error;
+        const map: Record<string, string> = {};
+        for (const row of (data || []) as any[]) map[row.key] = row.value;
+        setSiteSettings(map);
+        setEditBankName(map.payment_bank_name || '');
+        setEditAccount(map.payment_account || '');
+        setEditHolder(map.payment_holder || '');
+        setEditInstructions(map.payment_instructions || '');
+        setSettingsSaved(false);
       } else if (tab === 'actions') {
         const { data, error } = await supabase
           .from('admin_actions')
@@ -490,6 +508,110 @@ export default function AdminPage() {
     }
   };
 
+  const handleSaveSettings = async () => {
+    if (!sessionToken) return;
+    setSavingSettings(true);
+    setSettingsSaved(false);
+    try {
+      const pairs = [
+        ['payment_bank_name', editBankName.trim()],
+        ['payment_account', editAccount.trim()],
+        ['payment_holder', editHolder.trim()],
+        ['payment_instructions', editInstructions.trim()],
+      ];
+      for (const [key, value] of pairs) {
+        const { data, error } = await callRpc('rpc_admin_update_site_setting', {
+          p_token: sessionToken,
+          p_key: key,
+          p_value: value,
+        });
+        if (error || data?.error) {
+          Alert.alert('儲存失敗', data?.error || '請稍後再試');
+          return;
+        }
+      }
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } catch {
+      Alert.alert('儲存失敗', '請稍後再試');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const renderSettings = () => (
+    <ScrollView style={styles.tabContent} contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <Text style={styles.sectionTitle}>收款帳號設定</Text>
+      <Text style={styles.settingsDesc}>會員在繳費視窗中會看到以下帳號資訊，請確保正確。</Text>
+
+      <View style={styles.settingsCard}>
+        <Text style={styles.settingsLabel}>銀行名稱 + 代碼</Text>
+        <TextInput
+          style={styles.settingsInput}
+          value={editBankName}
+          onChangeText={setEditBankName}
+          placeholder="例：XX 銀行 (代碼 000)"
+          placeholderTextColor="#444"
+        />
+      </View>
+
+      <View style={styles.settingsCard}>
+        <Text style={styles.settingsLabel}>收款帳號</Text>
+        <TextInput
+          style={styles.settingsInput}
+          value={editAccount}
+          onChangeText={setEditAccount}
+          placeholder="例：000-0000-0000"
+          placeholderTextColor="#444"
+        />
+      </View>
+
+      <View style={styles.settingsCard}>
+        <Text style={styles.settingsLabel}>戶名</Text>
+        <TextInput
+          style={styles.settingsInput}
+          value={editHolder}
+          onChangeText={setEditHolder}
+          placeholder="例：OOO"
+          placeholderTextColor="#444"
+        />
+      </View>
+
+      <View style={styles.settingsCard}>
+        <Text style={styles.settingsLabel}>繳費說明文字</Text>
+        <TextInput
+          style={[styles.settingsInput, { minHeight: 120, textAlignVertical: 'top' }]}
+          value={editInstructions}
+          onChangeText={setEditInstructions}
+          placeholder="會員看到的繳費步驟說明，每行一個步驟"
+          placeholderTextColor="#444"
+          multiline
+          numberOfLines={6}
+        />
+      </View>
+
+      <View style={styles.settingsPreview}>
+        <Text style={styles.settingsPreviewTitle}>會員預覽</Text>
+        <Text style={styles.settingsPreviewText}>
+          銀行：{editBankName || '待設定'}{'\n'}
+          帳號：{editAccount || '待設定'}{'\n'}
+          戶名：{editHolder || '待設定'}{'\n'}
+          {editInstructions || '繳費說明待設定'}
+        </Text>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.confirmBtn, savingSettings && styles.confirmBtnDisabled]}
+        onPress={handleSaveSettings}
+        disabled={savingSettings}
+      >
+        {savingSettings ? <ActivityIndicator color="#000" /> : (
+          <Text style={styles.confirmBtnText}>{settingsSaved ? '已儲存 ✓' : '儲存設定'}</Text>
+        )}
+      </TouchableOpacity>
+    </ScrollView>
+  );
+
   const renderPayments = () => (
     <FlatList
       data={paymentRequests}
@@ -678,6 +800,7 @@ export default function AdminPage() {
           { key: 'reports', label: `檢舉 ${(stats?.pendingReports ?? 0) > 0 ? `(${stats?.pendingReports})` : ''}` },
           { key: 'complaints', label: '申訴' },
           { key: 'payments', label: `繳費審核 ${(paymentRequests.filter(p => p.status === 'pending').length) > 0 ? `(${paymentRequests.filter(p => p.status === 'pending').length})` : ''}` },
+          { key: 'settings', label: '收款設定' },
           { key: 'actions', label: '操作紀錄' },
         ] as { key: AdminTab; label: string }[]).map(t => (
           <TouchableOpacity
@@ -702,6 +825,7 @@ export default function AdminPage() {
           {activeTab === 'reports' && renderReports()}
           {activeTab === 'complaints' && renderComplaints()}
           {activeTab === 'payments' && renderPayments()}
+          {activeTab === 'settings' && renderSettings()}
           {activeTab === 'actions' && renderActionLog()}
         </>
       )}
@@ -989,4 +1113,17 @@ const styles = StyleSheet.create({
   },
   confirmBtnDisabled: { opacity: 0.4 },
   confirmBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  settingsDesc: { color: '#888', fontSize: 13, marginBottom: 16, lineHeight: 20 },
+  settingsCard: { marginBottom: 14 },
+  settingsLabel: { color: '#aaa', fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  settingsInput: {
+    backgroundColor: '#1A1A2E', borderRadius: 10, padding: 14,
+    color: '#fff', fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  settingsPreview: {
+    backgroundColor: 'rgba(0,212,170,0.06)', borderRadius: 12, padding: 16,
+    borderWidth: 1, borderColor: 'rgba(0,212,170,0.15)', marginBottom: 16,
+  },
+  settingsPreviewTitle: { color: '#00D4AA', fontSize: 13, fontWeight: '700', marginBottom: 8 },
+  settingsPreviewText: { color: '#ccc', fontSize: 13, lineHeight: 22 },
 });
