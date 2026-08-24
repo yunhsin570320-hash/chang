@@ -414,7 +414,7 @@ export type EcPayOrder = {
 
 export async function sendPhoneOtp(
   phone: string
-): Promise<{ ok: boolean; error: string | null }> {
+): Promise<{ ok: boolean; error: string | null; devCode?: string | null }> {
   try {
     const res = await fetch(`${supabaseUrl}/functions/v1/send-sms-otp`, {
       method: 'POST',
@@ -429,7 +429,7 @@ export async function sendPhoneOtp(
     if (!res.ok || body?.error) {
       return { ok: false, error: body?.error || '驗證碼發送失敗，請稍後再試' };
     }
-    return { ok: true, error: null };
+    return { ok: true, error: null, devCode: body?.devCode ?? null };
   } catch {
     return { ok: false, error: '驗證碼發送失敗，請檢查網路連線' };
   }

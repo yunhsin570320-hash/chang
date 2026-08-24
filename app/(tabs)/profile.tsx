@@ -60,6 +60,7 @@ export default function ProfilePage() {
   const [otpCode, setOtpCode] = useState('');
   const [otpCountdown, setOtpCountdown] = useState(0);
   const [otpVerified, setOtpVerified] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
 
   const { user, currentRole, switchRole, logout, canSwitchRoles, refreshUser, sessionToken } = useAuth();
   const router = useRouter();
@@ -153,6 +154,7 @@ export default function ProfilePage() {
     setOtpStep(false);
     setOtpVerified(false);
     setOtpCode('');
+    setDevCode(null);
     setEditModalVisible(true);
   };
 
@@ -177,11 +179,12 @@ export default function ProfilePage() {
       return;
     }
     setEditError(null);
-    const { ok, error } = await sendPhoneOtp(editPhone);
+    const { ok, error, devCode: dc } = await sendPhoneOtp(editPhone);
     if (!ok) {
       setEditError(error || '驗證碼發送失敗，請稍後再試');
       return;
     }
+    setDevCode(dc ?? null);
     setOtpCountdown(600);
     setOtpStep(true);
     setOtpCode('');
@@ -1045,6 +1048,11 @@ export default function ProfilePage() {
                     <View style={styles.demoOtpBox}>
                       <Text style={styles.demoOtpLabel}>驗證碼已以簡訊發送到此號碼</Text>
                     </View>
+                    {devCode && (
+                      <View style={styles.devCodeBox}>
+                        <Text style={styles.devCodeText}>測試模式驗證碼：{devCode}</Text>
+                      </View>
+                    )}
                     <View style={styles.otpInputRow}>
                       <TextInput
                         style={styles.otpInput}
@@ -1304,6 +1312,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,215,0,0.3)', alignItems: 'center', marginBottom: 12,
   },
   demoOtpLabel: { color: '#888', fontSize: 11, marginBottom: 4 },
+  devCodeBox: {
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    borderRadius: 8, padding: 10,
+    marginBottom: 12,
+    borderWidth: 1, borderColor: 'rgba(255, 215, 0, 0.4)',
+  },
+  devCodeText: { color: '#FFD700', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   demoOtpCode: { color: '#FFD700', fontSize: 28, fontWeight: '800', letterSpacing: 6 },
   otpInputRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   otpInput: {

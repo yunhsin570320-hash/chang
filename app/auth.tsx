@@ -14,7 +14,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Crown, User, Mail, Lock, Eye, EyeOff, Check, Phone, MapPin, ShieldCheck, FileText, X, ChevronRight, KeyRound, ArrowLeft } from 'lucide-react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { callRpc, supabase, sendPhoneOtp } from '../lib/supabase';
+import { callRpc, sendPhoneOtp } from '../lib/supabase';
 
 function validateTWPhone(phone: string): boolean {
   const cleaned = phone.replace(/[\s\-()]/g, '');
@@ -53,6 +53,7 @@ export default function AuthPage() {
   const [otpCountdown, setOtpCountdown] = useState(0);
   const [otpSending, setOtpSending] = useState(false);
   const [otpVerifying, setOtpVerifying] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -98,14 +99,13 @@ export default function AuthPage() {
 
     setOtpSending(true);
     try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: { shouldCreateUser: false },
-      });
-      if (otpError) {
-        setError(otpError.message || '驗證碼發送失敗，請稍後再試');
+      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
+      const { ok, error: otpError, devCode: dc } = await sendPhoneOtp(cleanedPhone);
+      if (!ok) {
+        setError(otpError || '驗證碼發送失敗，請稍後再試');
         return;
       }
+      setDevCode(dc ?? null);
       setOtpCountdown(600);
       setStep('otp');
       setOtpCode('');
@@ -126,18 +126,16 @@ export default function AuthPage() {
 
     setOtpVerifying(true);
     try {
-      const { error: verifyErr } = await supabase.auth.verifyOtp({
-        email: email.trim().toLowerCase(),
-        token: otpCode,
-        type: 'email',
+      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
+      const { data, error: rpcErr } = await callRpc('rpc_verify_otp', {
+        p_phone: cleanedPhone,
+        p_code: otpCode.trim(),
       });
-
-      if (verifyErr) {
-        setError(verifyErr.message || '驗證碼驗證失敗');
+      if (rpcErr || data?.error || !data?.success) {
+        setError(data?.error || '驗證碼錯誤');
         return;
       }
 
-      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
       const result = await register(name.trim(), email.trim(), password, isBuyer, isSeller, cleanedPhone, address.trim());
       if (result.error) {
         setError(result.error);
@@ -153,14 +151,13 @@ export default function AuthPage() {
     setError(null);
     setOtpSending(true);
     try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: { shouldCreateUser: false },
-      });
-      if (otpError) {
-        setError(otpError.message || '重新發送失敗');
+      const cleanedPhone = phone.replace(/[\s\-()]/g, '');
+      const { ok, error: otpError, devCode: dc } = await sendPhoneOtp(cleanedPhone);
+      if (!ok) {
+        setError(otpError || '重新發送失敗');
         return;
       }
+      setDevCode(dc ?? null);
       setOtpCountdown(600);
       setOtpCode('');
       setError(null);
@@ -192,11 +189,12 @@ export default function AuthPage() {
       }
 
       // The one-time code is delivered by SMS to the phone number on the account.
-      const { ok, error: otpError } = await sendPhoneOtp(cleanedPhone);
+      const { ok, error: otpError, devCode: dc } = await sendPhoneOtp(cleanedPhone);
       if (!ok) {
         setError(otpError || '驗證碼發送失敗');
         return;
       }
+      setDevCode(dc ?? null);
       setOtpCountdown(600);
       setForgotStep('otp');
       setForgotOtp('');
@@ -273,14 +271,13 @@ export default function AuthPage() {
     setError(null);
     setForgotSubmitting(true);
     try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: forgotEmail.trim().toLowerCase(),
-        options: { shouldCreateUser: false },
-      });
-      if (otpError) {
-        setError(otpError.message || '重新發送失敗');
+      const cleanedPhone = forgotPhone.replace(/[\s\-()]/g, '');
+      const { ok, error: otpError, devCode: dc } = await sendPhoneOtp(cleanedPhone);
+      if (!ok) {
+        setError(otpError || '重新發送失敗');
         return;
       }
+      setDevCode(dc ?? null);
       setOtpCountdown(600);
       setForgotOtp('');
     } catch {
@@ -409,7 +406,7 @@ export default function AuthPage() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>聯絡手機 * <Text style={styles.requiredHint}>（用於競標通知與交付聯繫，驗證碼已改為 email 發送）</Text></Text>
+                <Text style={styles.inputLabel}>聯絡手機 * <Text style={styles.requiredHint}>（用於競標通知與交付聯繫，驗證碼將以簡訊發送至此號碼）</Text></Text>
                 <View style={styles.inputRow}>
                   <Phone size={20} color="#666" />
                   <TextInput
@@ -467,12 +464,18 @@ export default function AuthPage() {
               <View style={styles.otpInfoBox}>
                 <ShieldCheck size={28} color="#00D4AA" />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.otpInfoTitle}>信箱驗證</Text>
+                  <Text style={styles.otpInfoTitle}>手機驗證</Text>
                   <Text style={styles.otpInfoText}>
-                    驗證碼已發送至 {email}
+                    驗證碼已以簡訊發送至 {phone.replace(/[\s\-()]/g, '')}
                   </Text>
                 </View>
               </View>
+
+              {devCode && (
+                <View style={styles.devCodeBox}>
+                  <Text style={styles.devCodeText}>測試模式驗證碼：{devCode}</Text>
+                </View>
+              )}
 
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>輸入6位驗證碼 *</Text>
@@ -564,7 +567,7 @@ export default function AuthPage() {
                     )}
                   </View>
 
-                  <Text style={styles.forgotHint}>系統將發送驗證碼到您的電子郵箱，驗證後可設定新密碼。</Text>
+                  <Text style={styles.forgotHint}>系統將發送驗證碼到您的註冊手機號碼，驗證後可設定新密碼。</Text>
 
 n                  <TouchableOpacity
                     style={[styles.submitButton, forgotSubmitting && styles.disabled]}
@@ -585,6 +588,12 @@ n                  <TouchableOpacity
                       <Text style={styles.otpInfoText}>驗證碼已以簡訊發送至帳戶手機</Text>
                     </View>
                   </View>
+
+                  {devCode && (
+                    <View style={styles.devCodeBox}>
+                      <Text style={styles.devCodeText}>測試模式驗證碼：{devCode}</Text>
+                    </View>
+                  )}
 
                   <View style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>輸入6位驗證碼 *</Text>
@@ -899,6 +908,13 @@ const styles = StyleSheet.create({
   },
   otpInfoTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 2 },
   otpInfoText: { color: '#888', fontSize: 13 },
+  devCodeBox: {
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    borderRadius: 8, padding: 12,
+    marginBottom: 16,
+    borderWidth: 1, borderColor: 'rgba(255, 215, 0, 0.4)',
+  },
+  devCodeText: { color: '#FFD700', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   otpActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   countdownText: { color: '#888', fontSize: 13 },
   expiredText: { color: '#FF6B6B', fontSize: 13, fontWeight: '600' },

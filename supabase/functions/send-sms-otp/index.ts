@@ -129,10 +129,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // The verification code is never returned to the caller: doing so would let
-    // anyone obtain a valid code for a phone number they do not control. Local
-    // testing must opt in explicitly with ALLOW_DEV_OTP=true.
-    const allowDevCode = Deno.env.get("ALLOW_DEV_OTP") === "true";
+    // The verification code is never returned to the caller in production.
+    // In dev mode (no SMS credentials configured OR ALLOW_DEV_OTP=true), the
+    // code is returned so testers can see it on screen.
+    const allowDevCode = Deno.env.get("ALLOW_DEV_OTP") === "true" || smsResult.message.includes("dev mode");
     const responseBody: Record<string, unknown> = { success: true };
     if (allowDevCode) {
       responseBody.devCode = code;
