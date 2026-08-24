@@ -18,12 +18,17 @@ export async function callRpc<T = any>(
       body: JSON.stringify({ fn, args: args || {} }),
     });
     if (!res.ok) {
-      const text = await res.text();
-      return { data: null, error: { message: text } };
+      // Never surface the raw response body: it can carry backend detail.
+      const body = await res.json().catch(() => null);
+      const message = body?.error?.message;
+      return {
+        data: null,
+        error: { message: typeof message === 'string' ? message : '操作失敗，請稍後再試' },
+      };
     }
     return await res.json();
-  } catch (e: any) {
-    return { data: null, error: { message: e.message || 'Network error' } };
+  } catch {
+    return { data: null, error: { message: '網路連線失敗，請稍後再試' } };
   }
 }
 
@@ -208,59 +213,57 @@ export async function uploadProductImage(source: string): Promise<string> {
   return `${supabaseUrl}/storage/v1/object/public/product-images/${filename}`;
 }
 
-export async function uploadPaymentProof(source: string): Promise<string> {
+export async function uploadPaymentProof(
+  source: string,
+  sessionToken: string
+): Promise<string> {
   if (!source) return '';
-  if (!source.startsWith('data:') && !source.startsWith('file://') && !source.startsWith('content://')) {
-    return source;
+  if (!source.startsWith('data:')) {
+    throw new Error('unsupported-source');
   }
 
-  const path = `proof-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // Proofs are private: the server validates the session, checks the file type and
+  // size, stores the object in a private bucket and returns its path only.
+  const res = await fetch(`${supabaseUrl}/functions/v1/payment-proof?action=upload`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+    },
+    body: JSON.stringify({ sessionToken, dataUrl: source }),
+  });
 
-  if (source.startsWith('data:')) {
-    const commaIdx = source.indexOf(',');
-    const header = source.slice(0, commaIdx);
-    const base64Data = source.slice(commaIdx + 1);
-    const mime = header.match(/data:([^;]+)/)?.[1] ?? 'image/jpeg';
-    const ext = mime === 'image/png' ? 'png' : 'jpg';
-    const filename = `${path}.${ext}`;
-
-    const binary = atob(base64Data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    const { error } = await supabase.storage
-      .from('payment-proofs')
-      .upload(filename, bytes.buffer as ArrayBuffer, { contentType: mime, upsert: false });
-
-    if (error) throw new Error(`Storage upload failed: ${error.message}`);
-
-    const { data } = supabase.storage.from('payment-proofs').getPublicUrl(filename);
-    return data.publicUrl;
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body?.path) {
+    throw new Error(body?.error || 'upload-failed');
   }
+  return body.path as string;
+}
 
-  const uriExt = source.split('?')[0].split('.').pop()?.toLowerCase() ?? 'jpg';
-  const mime = uriExt === 'png' ? 'image/png' : 'image/jpeg';
-  const filename = `${path}.${uriExt === 'png' ? 'png' : 'jpg'}`;
-
-  const formData = new FormData();
-  formData.append('file', { uri: source, type: mime, name: filename } as any);
-
-  const res = await fetch(
-    `${supabaseUrl}/storage/v1/object/payment-proofs/${filename}`,
-    {
+export async function getPaymentProofUrl(
+  path: string,
+  sessionToken: string
+): Promise<string | null> {
+  if (!path) return null;
+  // Legacy rows stored a full URL rather than a bucket path.
+  if (path.startsWith('http')) return path;
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/payment-proof?action=view`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
         apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
       },
-      body: formData,
-    }
-  );
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.status.toString());
-    throw new Error(`Storage upload failed: ${msg}`);
+      body: JSON.stringify({ sessionToken, path }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body?.url) return null;
+    return body.url as string;
+  } catch {
+    return null;
   }
-  return `${supabaseUrl}/storage/v1/object/public/payment-proofs/${filename}`;
 }
 
 export type EcPayOrder = {
@@ -276,20 +279,36 @@ export type EcPayOrder = {
   created_at: string;
 };
 
+export async function sendPhoneOtp(
+  phone: string
+): Promise<{ ok: boolean; error: string | null }> {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/send-sms-otp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ phone }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body?.error) {
+      return { ok: false, error: body?.error || '驗證碼發送失敗，請稍後再試' };
+    }
+    return { ok: true, error: null };
+  } catch {
+    return { ok: false, error: '驗證碼發送失敗，請檢查網路連線' };
+  }
+}
+
 export async function initiateECPayCheckout(
   merchantTradeNo: string,
-  totalAmount: number,
-  itemName: string,
   sessionToken: string
 ): Promise<{ checkoutUrl: string | null; error: string | null }> {
   try {
-    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
-
-    // Build the return/result URLs — point back to the edge function
-    const resultUrl = `${supabaseUrl}/functions/v1/ecpay?action=result`;
-    const returnUrl = `${supabaseUrl}/functions/v1/ecpay?action=callback`;
-
+    // The amount, item name and callback URLs are decided by the server from the
+    // stored order. Nothing about the payment is taken from this request body.
     const res = await fetch(`${supabaseUrl}/functions/v1/ecpay?action=checkout`, {
       method: 'POST',
       headers: {
@@ -297,18 +316,11 @@ export async function initiateECPayCheckout(
         'apikey': supabaseAnonKey,
         'Authorization': `Bearer ${supabaseAnonKey}`,
       },
-      body: JSON.stringify({
-        merchantTradeNo,
-        totalAmount,
-        itemName,
-        returnUrl,
-        orderResultUrl: resultUrl,
-      }),
+      body: JSON.stringify({ merchantTradeNo, sessionToken }),
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      return { checkoutUrl: null, error: `付款請求失敗: ${text}` };
+      return { checkoutUrl: null, error: '付款請求失敗，請稍後再試' };
     }
 
     // The edge function returns HTML that auto-submits to ECPay
@@ -318,8 +330,8 @@ export async function initiateECPayCheckout(
     const checkoutUrl = URL.createObjectURL(blob);
 
     return { checkoutUrl, error: null };
-  } catch (e: any) {
-    return { checkoutUrl: null, error: e.message || 'Network error' };
+  } catch {
+    return { checkoutUrl: null, error: '付款請求失敗，請檢查網路連線' };
   }
 }
 

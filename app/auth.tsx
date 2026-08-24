@@ -14,7 +14,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Crown, User, Mail, Lock, Eye, EyeOff, Check, Phone, MapPin, ShieldCheck, FileText, X, ChevronRight, KeyRound, ArrowLeft } from 'lucide-react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { callRpc, supabase } from '../lib/supabase';
+import { callRpc, supabase, sendPhoneOtp } from '../lib/supabase';
 
 function validateTWPhone(phone: string): boolean {
   const cleaned = phone.replace(/[\s\-()]/g, '');
@@ -181,23 +181,20 @@ export default function AuthPage() {
 
     setForgotSubmitting(true);
     try {
+      const cleanedPhone = forgotPhone.replace(/[\s\-()]/g, '');
       const { data, error: rpcErr } = await callRpc('rpc_request_password_reset', {
         p_email: forgotEmail.trim().toLowerCase(),
-        p_phone: forgotPhone.replace(/[\s\-()]/g, ''),
+        p_phone: cleanedPhone,
       });
       if (rpcErr || data?.error) {
-        setError(data?.error || '申請失敗，請稍後再試');
+        setError('申請失敗，請稍後再試');
         return;
       }
-      setForgotToken(data.reset_token);
 
-      // Send OTP via email using Supabase built-in
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: forgotEmail.trim().toLowerCase(),
-        options: { shouldCreateUser: false },
-      });
-      if (otpError) {
-        setError(otpError.message || '驗證碼發送失敗');
+      // The one-time code is delivered by SMS to the phone number on the account.
+      const { ok, error: otpError } = await sendPhoneOtp(cleanedPhone);
+      if (!ok) {
+        setError(otpError || '驗證碼發送失敗');
         return;
       }
       setOtpCountdown(600);
@@ -216,15 +213,15 @@ export default function AuthPage() {
 
     setForgotSubmitting(true);
     try {
-      const { error: verifyErr } = await supabase.auth.verifyOtp({
-        email: forgotEmail.trim().toLowerCase(),
-        token: forgotOtp,
-        type: 'email',
+      const { data, error: rpcErr } = await callRpc('rpc_verify_otp', {
+        p_phone: forgotPhone.replace(/[\s\-()]/g, ''),
+        p_code: forgotOtp.trim(),
       });
-      if (verifyErr) {
-        setError(verifyErr.message || '驗證碼錯誤');
+      if (rpcErr || data?.error || !data?.success) {
+        setError(data?.error || '驗證碼錯誤');
         return;
       }
+      setForgotToken(forgotOtp.trim());
       setForgotStep('reset');
     } catch {
       setError('驗證失敗，請稍後再試');
@@ -241,8 +238,10 @@ export default function AuthPage() {
 
     setForgotSubmitting(true);
     try {
-      const { data, error: rpcErr } = await callRpc('rpc_reset_password', {
-        p_reset_token: forgotToken,
+      const { data, error: rpcErr } = await callRpc('rpc_reset_password_v2', {
+        p_email: forgotEmail.trim().toLowerCase(),
+        p_phone: forgotPhone.replace(/[\s\-()]/g, ''),
+        p_code: forgotToken,
         p_new_password: forgotNewPassword,
       });
       if (rpcErr || data?.error) {
@@ -324,7 +323,7 @@ export default function AuthPage() {
           <Text style={styles.title}>暗標競標會</Text>
           <Text style={styles.subtitle}>
             {forgotPassword
-              ? forgotSuccess ? '密碼已重設' : forgotStep === 'identify' ? '忘記密碼' : forgotStep === 'otp' ? '驗證信箱' : '設定新密碼'
+              ? forgotSuccess ? '密碼已重設' : forgotStep === 'identify' ? '忘記密碼' : forgotStep === 'otp' ? '驗證手機' : '設定新密碼'
               : isLogin ? '登入您的帳戶' : step === 'otp' ? '驗證信箱' : '註冊新帳戶'}
           </Text>
         </View>
@@ -582,8 +581,8 @@ n                  <TouchableOpacity
                   <View style={styles.otpInfoBox}>
                     <ShieldCheck size={28} color="#00D4AA" />
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.otpInfoTitle}>信箱驗證</Text>
-                      <Text style={styles.otpInfoText}>驗證碼已發送至 {forgotEmail}</Text>
+                      <Text style={styles.otpInfoTitle}>手機驗證</Text>
+                      <Text style={styles.otpInfoText}>驗證碼已以簡訊發送至帳戶手機</Text>
                     </View>
                   </View>
 

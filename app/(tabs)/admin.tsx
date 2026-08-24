@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ScrollView, TextInput, ActivityIndicator, Modal, Alert, Image, Platform,
@@ -9,7 +9,7 @@ import {
   RotateCcw, MessageSquare, Clock, TrendingUp, DollarSign, ImageIcon,
 } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { supabase, callRpc, Profile, Report, Product, PaymentRequest } from '../../lib/supabase';
+import { supabase, callRpc, Profile, Report, Product, PaymentRequest, getPaymentProofUrl } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 
@@ -47,6 +47,38 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
   resolve_report: '結案檢舉',
   dismiss_report: '駁回檢舉',
 };
+
+// Payment proofs live in a private bucket; the server issues a short-lived signed
+// link only to the uploader or an admin.
+function ProofImage({ path, sessionToken }: { path: string | null; sessionToken: string | null }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!path || !sessionToken) { setUrl(null); return; }
+    getPaymentProofUrl(path, sessionToken).then(resolved => {
+      if (active) setUrl(resolved);
+    });
+    return () => { active = false; };
+  }, [path, sessionToken]);
+
+  if (!url) {
+    return (
+      <View style={{ width: '100%', height: 180, borderRadius: 10, marginTop: 10, marginBottom: 8, backgroundColor: '#1A1A2E', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: '#666', fontSize: 13 }}>繳費證明載入中…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={() => {
+      if (Platform.OS === 'web') window.open(url, '_blank');
+    }}>
+      {/* @ts-ignore */}
+      <Image source={{ uri: url }} style={{ width: '100%', height: 180, borderRadius: 10, marginTop: 10, marginBottom: 8 }} resizeMode="cover" />
+    </TouchableOpacity>
+  );
+}
 
 const ACTION_COLORS: Record<string, string> = {
   warn: '#FFD700',
@@ -721,15 +753,8 @@ export default function AdminPage() {
           )}
           <Text style={styles.reportDate}>{new Date(p.created_at).toLocaleString('zh-TW')}</Text>
 
-          {/* Proof image */}
-          <TouchableOpacity onPress={() => {
-            if (Platform.OS === 'web') {
-              window.open(p.proof_image_url, '_blank');
-            }
-          }}>
-            {/* @ts-ignore */}
-            <Image source={{ uri: p.proof_image_url }} style={{ width: '100%', height: 180, borderRadius: 10, marginTop: 10, marginBottom: 8 }} resizeMode="cover" />
-          </TouchableOpacity>
+          {/* Proof image — fetched through a short-lived signed link */}
+          <ProofImage path={p.proof_image_url} sessionToken={sessionToken} />
 
           {p.status === 'pending' && (
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>

@@ -20,7 +20,7 @@ import {
   Lock, Unlock, AlertCircle, Zap, Camera, Upload, Clock, ScrollText,
 } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { supabase, callRpc, Bid, Product, Notification, uploadPaymentProof, PaymentRequest } from '../../lib/supabase';
+import { supabase, callRpc, Bid, Product, Notification, uploadPaymentProof, sendPhoneOtp, PaymentRequest } from '../../lib/supabase';
 import { WebCamera } from '../../components/WebCamera';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
@@ -57,7 +57,6 @@ export default function ProfilePage() {
   // Phone OTP state
   const [phoneChanged, setPhoneChanged] = useState(false);
   const [otpStep, setOtpStep] = useState(false);
-  const [generatedOtp, setGeneratedOtp] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [otpCountdown, setOtpCountdown] = useState(0);
   const [otpVerified, setOtpVerified] = useState(false);
@@ -169,26 +168,35 @@ export default function ProfilePage() {
     (phoneChanged && !otpVerified) ||
     (!phoneChanged && !!editPhone && !user?.phone_verified && !otpVerified);
 
-  const sendOtp = () => {
+  // The code is generated and checked on the server and delivered by SMS; the
+  // browser never sees it.
+  const sendOtp = async () => {
     if (!validateTWPhone(editPhone)) {
       setEditError('請輸入有效的台灣手機號碼（格式：09xxxxxxxx）');
       return;
     }
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    setGeneratedOtp(code);
+    setEditError(null);
+    const { ok, error } = await sendPhoneOtp(editPhone);
+    if (!ok) {
+      setEditError(error || '驗證碼發送失敗，請稍後再試');
+      return;
+    }
     setOtpCountdown(600);
     setOtpStep(true);
     setOtpCode('');
-    setEditError(null);
   };
 
-  const verifyOtp = () => {
-    if (otpCode !== generatedOtp) {
-      setEditError('驗證碼錯誤，請重新輸入');
-      return;
-    }
+  const verifyOtp = async () => {
     if (otpCountdown <= 0) {
       setEditError('驗證碼已過期，請重新取得');
+      return;
+    }
+    const { data, error } = await callRpc('rpc_verify_otp', {
+      p_phone: editPhone,
+      p_code: otpCode.trim(),
+    });
+    if (error || data?.error || !data?.success) {
+      setEditError(data?.error || '驗證碼錯誤，請重新輸入');
       return;
     }
     setOtpVerified(true);
@@ -214,11 +222,6 @@ export default function ProfilePage() {
       return;
     }
 
-    // Phone must be verified (either newly verified or already was)
-    if (needsOtpVerification && !otpVerified) {
-      setEditError('請先完成手機號碼驗證');
-      return;
-    }
 
     setSaving(true);
     try {
@@ -228,8 +231,6 @@ export default function ProfilePage() {
         p_payment_method: editPayment.trim() || null,
         p_bank_account: editBankAccount.trim() || null,
         p_shipping_address: editAddress.trim(),
-        p_phone_verified: otpVerified ? true : null,
-        p_phone_verified_at: otpVerified ? new Date().toISOString() : null,
       });
       if (result?.error) {
         setEditError(result.error);
@@ -283,7 +284,7 @@ export default function ProfilePage() {
     setSubmittingPayment(true);
     setPaymentError(null);
     try {
-      const proofUrl = await uploadPaymentProof(paymentProof);
+      const proofUrl = await uploadPaymentProof(paymentProof, sessionToken);
       const { data, error } = await callRpc('rpc_submit_payment_request', {
         p_token: sessionToken,
         p_type: paymentType,
@@ -298,7 +299,8 @@ export default function ProfilePage() {
       await fetchData();
       Alert.alert('已提交', '繳費申請已送出，請等候管理員審核。審核通過後將自動升級。');
     } catch (e: any) {
-      setPaymentError('提交失敗：' + (e.message || '請稍後再試'));
+      console.error('payment request failed', e);
+      setPaymentError('提交失敗，請稍後再試');
     } finally {
       setSubmittingPayment(false);
     }
@@ -1012,8 +1014,7 @@ export default function ProfilePage() {
                 {otpStep && (
                   <View style={styles.otpContainer}>
                     <View style={styles.demoOtpBox}>
-                      <Text style={styles.demoOtpLabel}>測試用驗證碼（實際會發送簡訊）</Text>
-                      <Text style={styles.demoOtpCode}>{generatedOtp}</Text>
+                      <Text style={styles.demoOtpLabel}>驗證碼已以簡訊發送到此號碼</Text>
                     </View>
                     <View style={styles.otpInputRow}>
                       <TextInput

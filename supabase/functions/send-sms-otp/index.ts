@@ -96,8 +96,10 @@ Deno.serve(async (req: Request) => {
     });
 
     if (rpcError || !rpcData || rpcData.error) {
+      // Never surface the database error text; only the app's own message, if any.
+      if (rpcError) console.error("rpc_send_otp failed", rpcError);
       return new Response(
-        JSON.stringify({ error: rpcData?.error || rpcError?.message || "無法產生驗證碼" }),
+        JSON.stringify({ error: rpcData?.error || "無法產生驗證碼，請稍後再試" }),
         { status: 400, headers: { ...hdrs, "Content-Type": "application/json" } }
       );
     }
@@ -119,17 +121,21 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!smsResult.ok) {
+      // The provider's raw response is internal detail.
+      console.error("sms send failed", smsResult.message);
       return new Response(
-        JSON.stringify({ error: "簡訊發送失敗：" + smsResult.message }),
+        JSON.stringify({ error: "簡訊發送失敗，請稍後再試" }),
         { status: 500, headers: { ...hdrs, "Content-Type": "application/json" } }
       );
     }
 
-    const isDev = smsProvider === "mitake" && !Deno.env.get("MITAKE_USERNAME");
+    // The verification code is never returned to the caller: doing so would let
+    // anyone obtain a valid code for a phone number they do not control. Local
+    // testing must opt in explicitly with ALLOW_DEV_OTP=true.
+    const allowDevCode = Deno.env.get("ALLOW_DEV_OTP") === "true";
     const responseBody: Record<string, unknown> = { success: true };
-    if (isDev) {
+    if (allowDevCode) {
       responseBody.devCode = code;
-      responseBody.message = "開發模式：簡訊服務未設定，驗證碼已回傳。上線前請設定 SMS 環境變數。";
     }
 
     return new Response(

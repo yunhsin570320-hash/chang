@@ -18,6 +18,32 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // This is a privileged maintenance operation that rewrites every product row,
+    // so it requires an administrator session and never runs for anonymous callers.
+    const body = await req.json().catch(() => ({}));
+    const sessionToken = typeof body?.sessionToken === "string" ? body.sessionToken : "";
+    if (!sessionToken) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const { data: sessionUser, error: sessionError } = await supabase.rpc(
+      "rpc_validate_session",
+      { p_token: sessionToken },
+    );
+
+    if (
+      sessionError || !sessionUser ||
+      (sessionUser as Record<string, unknown>).is_admin !== true
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     // Fetch all products that still have base64 image_url
     const { data: products, error: fetchError } = await supabase
       .from("products")
@@ -28,7 +54,7 @@ Deno.serve(async (req: Request) => {
 
     const total = products?.length ?? 0;
     let migrated = 0;
-    const errors: string[] = [];
+    let failed = 0;
 
     for (const product of products ?? []) {
       try {
@@ -55,7 +81,8 @@ Deno.serve(async (req: Request) => {
           .upload(path, bytes, { contentType: mime, upsert: true });
 
         if (uploadError) {
-          errors.push(`${product.id}: ${uploadError.message}`);
+          console.error("upload failed", product.id, uploadError);
+          failed++;
           continue;
         }
 
@@ -69,22 +96,25 @@ Deno.serve(async (req: Request) => {
           .eq("id", product.id);
 
         if (updateError) {
-          errors.push(`${product.id}: update failed - ${updateError.message}`);
+          console.error("update failed", product.id, updateError);
+          failed++;
         } else {
           migrated++;
         }
-      } catch (err: any) {
-        errors.push(`${product.id}: ${err?.message ?? "unknown error"}`);
+      } catch (err) {
+        console.error("migration error", product.id, err);
+        failed++;
       }
     }
 
     return new Response(
-      JSON.stringify({ total, migrated, errors }),
+      JSON.stringify({ total, migrated, failed }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-  } catch (err: any) {
+  } catch (err) {
+    console.error("migrate-product-images failed", err);
     return new Response(
-      JSON.stringify({ error: err?.message ?? "Unknown error" }),
+      JSON.stringify({ error: "Migration failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

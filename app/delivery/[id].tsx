@@ -88,7 +88,8 @@ export default function DeliveryPage() {
       ]);
 
       if (productResult.error) {
-        setErrorMsg(`商品資料錯誤: ${productResult.error.message}`);
+        console.error('product load failed', productResult.error);
+        setErrorMsg('無法載入商品資料，請稍後再試');
         setLoading(false);
         return;
       }
@@ -98,7 +99,8 @@ export default function DeliveryPage() {
         return;
       }
       if (buyerResult.error) {
-        setErrorMsg(`買家資料錯誤: ${buyerResult.error.message}`);
+        console.error('buyer load failed', buyerResult.error);
+        setErrorMsg('無法載入買家資料，請稍後再試');
         setLoading(false);
         return;
       }
@@ -222,14 +224,13 @@ export default function DeliveryPage() {
       });
 
       if (error || data?.error) {
-        Alert.alert('錯誤', data?.error || error?.message || '建立付款訂單失敗');
+        console.error('ecpay order failed', error ?? data?.error);
+        Alert.alert('錯誤', data?.error || '建立付款訂單失敗');
         return;
       }
 
       const { checkoutUrl, error: checkoutError } = await initiateECPayCheckout(
         data.merchant_trade_no,
-        data.total_amount,
-        data.item_name,
         sessionToken
       );
 

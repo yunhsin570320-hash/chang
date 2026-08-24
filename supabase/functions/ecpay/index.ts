@@ -7,13 +7,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-// ECPay config — from environment secrets
-const ECPAY_MERCHANT_ID = Deno.env.get("ECPAY_MERCHANT_ID") || "3002607";
-const ECPAY_HASH_KEY = Deno.env.get("ECPAY_HASH_KEY") || "pwFHCqoQZGmho4w6";
-const ECPAY_HASH_IV = Deno.env.get("ECPAY_HASH_IV") || "EkRm7iFT261dpevs";
+// ECPay config — secrets only. There is deliberately no fallback: the published
+// sandbox HashKey/HashIV would let anyone forge a valid payment notification.
+const ECPAY_MERCHANT_ID = Deno.env.get("ECPAY_MERCHANT_ID") || "";
+const ECPAY_HASH_KEY = Deno.env.get("ECPAY_HASH_KEY") || "";
+const ECPAY_HASH_IV = Deno.env.get("ECPAY_HASH_IV") || "";
 const ECPAY_STAGE = Deno.env.get("ECPAY_STAGE") || "test";
+const ECPAY_CONFIGURED = ECPAY_MERCHANT_ID !== "" && ECPAY_HASH_KEY !== "" && ECPAY_HASH_IV !== "";
 
-// ECPay AIO URLs
 const ECPAY_BASE_URL = ECPAY_STAGE === "prod"
   ? "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"
   : "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5";
@@ -21,44 +22,57 @@ const ECPAY_BASE_URL = ECPAY_STAGE === "prod"
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// Generate CheckMacValue per ECPay spec (SHA256)
-async function genCheckMacValue(params: Record<string, string>): Promise<string> {
-  // 1. Sort parameters by key alphabetically
-  const sortedKeys = Object.keys(params).sort();
-  // 2. Join as key=value&key=value
-  const sortedStr = sortedKeys.map(k => `${k}=${params[k]}`).join("&");
-  // 3. Prepend HashKey, append HashIV
-  const raw = `HashKey=${ECPAY_HASH_KEY}&${sortedStr}&HashIV=${ECPAY_HASH_IV}`;
-  // 4. URL encode (.NET-style: encodeURI then replace specific chars)
-  let encoded = encodeURIComponent(raw);
-  // ECPay .NET encoding replacements
-  encoded = encoded
-    .replace(/%2d/g, "-")
-    .replace(/%5f/g, "_")
-    .replace(/%2e/g, ".")
-    .replace(/%21/g, "!")
-    .replace(/%2a/g, "*")
-    .replace(/%28/g, "(")
-    .replace(/%29/g, ")");
-  // 5. Convert to lowercase
-  const lower = encoded.toLowerCase();
-  // 6. SHA256 hash, uppercase
-  const hash = await sha256Hex(lower);
-  return hash.toUpperCase();
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function serviceClient() {
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
 
 async function sha256Hex(message: string): Promise<string> {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-// Verify CheckMacValue from ECPay callback
-function verifyCheckMacValue(params: Record<string, string>, receivedCMV: string): boolean {
-  const { CheckMacValue, ...rest } = params;
+// Generate CheckMacValue per ECPay spec (SHA256)
+async function genCheckMacValue(params: Record<string, string>): Promise<string> {
+  const sortedKeys = Object.keys(params).sort();
+  const sortedStr = sortedKeys.map(k => `${k}=${params[k]}`).join("&");
+  const raw = `HashKey=${ECPAY_HASH_KEY}&${sortedStr}&HashIV=${ECPAY_HASH_IV}`;
+  let encoded = encodeURIComponent(raw);
+  encoded = encoded
+    .replace(/%2d/gi, "-")
+    .replace(/%5f/gi, "_")
+    .replace(/%2e/gi, ".")
+    .replace(/%21/gi, "!")
+    .replace(/%2a/gi, "*")
+    .replace(/%28/gi, "(")
+    .replace(/%29/gi, ")");
+  const hash = await sha256Hex(encoded.toLowerCase());
+  return hash.toUpperCase();
+}
+
+// Verify the CheckMacValue on an incoming ECPay notification.
+async function verifyCheckMacValue(
+  params: Record<string, string>,
+  receivedCMV: string,
+): Promise<boolean> {
+  if (!receivedCMV) return false;
+  const rest: Record<string, string> = { ...params };
+  delete rest.CheckMacValue;
   const computed = await genCheckMacValue(rest);
-  return computed === receivedCMV;
+  return computed === receivedCMV.toUpperCase();
 }
 
 Deno.serve(async (req: Request) => {
@@ -69,15 +83,45 @@ Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   const action = url.searchParams.get("action") || "checkout";
 
-  try {
-    // === CHECKOUT: Generate ECPay AIO form HTML ===
-    if (action === "checkout" && req.method === "POST") {
-      const body = await req.json();
-      const { merchantTradeNo, totalAmount, itemName, returnUrl, orderResultUrl } = body;
+  if (!ECPAY_CONFIGURED) {
+    return new Response(
+      JSON.stringify({ error: "線上付款尚未設定完成，請聯繫平台管理員" }),
+      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
 
-      if (!merchantTradeNo || !totalAmount || !itemName) {
+  try {
+    // === CHECKOUT: build the ECPay AIO form from the stored order ===
+    if (action === "checkout" && req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const merchantTradeNo = typeof body?.merchantTradeNo === "string" ? body.merchantTradeNo : "";
+      const sessionToken = typeof body?.sessionToken === "string" ? body.sessionToken : "";
+
+      if (!merchantTradeNo || !sessionToken) {
         return new Response(JSON.stringify({ error: "Missing required fields" }), {
           status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // The amount, item name and callback URLs come from the server, never the client.
+      const supabase = serviceClient();
+      const { data, error } = await supabase.rpc("rpc_get_ecpay_order_for_checkout", {
+        p_token: sessionToken,
+        p_merchant_trade_no: merchantTradeNo,
+      });
+
+      if (error) {
+        console.error("ecpay checkout lookup failed", error);
+        return new Response(JSON.stringify({ error: "無法建立付款，請稍後再試" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!data || data.error || !data.success) {
+        return new Response(JSON.stringify({ error: data?.error || "無法建立付款" }), {
+          status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -90,24 +134,22 @@ Deno.serve(async (req: Request) => {
 
       const params: Record<string, string> = {
         MerchantID: ECPAY_MERCHANT_ID,
-        MerchantTradeNo: merchantTradeNo,
+        MerchantTradeNo: String(data.merchant_trade_no),
         MerchantTradeDate: tradeDate,
         PaymentType: "aio",
-        TotalAmount: String(totalAmount),
+        TotalAmount: String(data.total_amount),
         TradeDesc: encodeURIComponent("競標平台商品付款"),
-        ItemName: itemName,
-        ReturnURL: returnUrl || `${SUPABASE_URL}/functions/v1/ecpay?action=callback`,
-        OrderResultURL: orderResultUrl || `${SUPABASE_URL}/functions/v1/ecpay?action=result`,
+        ItemName: String(data.item_name),
+        ReturnURL: `${SUPABASE_URL}/functions/v1/ecpay?action=callback`,
+        OrderResultURL: `${SUPABASE_URL}/functions/v1/ecpay?action=result`,
         ChoosePayment: "ALL",
         EncryptType: "1",
       };
 
-      const checkMacValue = await genCheckMacValue(params);
-      params.CheckMacValue = checkMacValue;
+      params.CheckMacValue = await genCheckMacValue(params);
 
-      // Build auto-submitting HTML form
       const formFields = Object.entries(params)
-        .map(([k, v]) => `  <input type="hidden" name="${k}" value="${v}" />`)
+        .map(([k, v]) => `  <input type="hidden" name="${escapeHtml(k)}" value="${escapeHtml(v)}" />`)
         .join("\n");
 
       const html = `<!DOCTYPE html>
@@ -129,7 +171,7 @@ Deno.serve(async (req: Request) => {
     <div class="spinner"></div>
     <p>正在前往綠界科技付款頁面...</p>
   </div>
-  <form id="ecpay-form" method="POST" action="${ECPAY_BASE_URL}">
+  <form id="ecpay-form" method="POST" action="${escapeHtml(ECPAY_BASE_URL)}">
 ${formFields}
   </form>
   <script>document.getElementById('ecpay-form').submit();</script>
@@ -143,26 +185,16 @@ ${formFields}
 
     // === CALLBACK: ECPay server-to-server payment notification ===
     if (action === "callback" && req.method === "POST") {
-      const contentType = req.headers.get("content-type") || "";
-      let params: Record<string, string> = {};
-
-      if (contentType.includes("application/x-www-form-urlencoded")) {
-        const formData = await req.formData();
-        for (const [key, value] of formData.entries()) {
-          params[key] = String(value);
-        }
-      } else {
-        const formData = await req.formData();
-        for (const [key, value] of formData.entries()) {
-          params[key] = String(value);
-        }
+      const params: Record<string, string> = {};
+      const formData = await req.formData();
+      for (const [key, value] of formData.entries()) {
+        params[key] = String(value);
       }
 
       const receivedCMV = params.CheckMacValue || "";
-      const { RtnCode, MerchantTradeNo, TradeNo, PaymentType, TradeDate } = params;
+      const { RtnCode, MerchantTradeNo, TradeNo, PaymentType, TradeDate, TradeAmt } = params;
 
-      // Verify the CheckMacValue
-      const isValid = verifyCheckMacValue(params, receivedCMV);
+      const isValid = await verifyCheckMacValue(params, receivedCMV);
       if (!isValid) {
         return new Response("0|CheckMacValue verification failed", {
           status: 200,
@@ -170,25 +202,35 @@ ${formFields}
         });
       }
 
-      // RtnCode = 1 means payment successful
-      if (RtnCode === "1" || RtnCode === 1) {
-        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-        const { error } = await supabase.rpc("rpc_confirm_ecpay_payment", {
-          p_merchant_trade_no: MerchantTradeNo,
-          p_ecpay_trade_no: TradeNo || null,
-          p_payment_type: PaymentType || null,
-          p_trade_date: TradeDate || null,
-          p_check_mac_value: receivedCMV,
-        });
+      const supabase = serviceClient();
 
-        if (error) {
-          return new Response("0|DB error", {
+      // RtnCode = 1 means payment successful
+      if (RtnCode === "1") {
+        const amount = Number.parseInt(String(TradeAmt ?? ""), 10);
+        if (!Number.isFinite(amount)) {
+          return new Response("0|Invalid amount", {
             status: 200,
             headers: { ...corsHeaders, "Content-Type": "text/plain" },
           });
         }
 
-        // ECPay expects "1|OK" to acknowledge successful receipt
+        const { data, error } = await supabase.rpc("rpc_confirm_ecpay_payment", {
+          p_merchant_trade_no: MerchantTradeNo,
+          p_ecpay_trade_no: TradeNo || null,
+          p_payment_type: PaymentType || null,
+          p_trade_date: TradeDate || null,
+          p_check_mac_value: receivedCMV,
+          p_amount: amount,
+        });
+
+        if (error || data?.error) {
+          console.error("ecpay confirm rejected", error ?? data?.error);
+          return new Response("0|Payment not accepted", {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "text/plain" },
+          });
+        }
+
         return new Response("1|OK", {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "text/plain" },
@@ -196,10 +238,10 @@ ${formFields}
       }
 
       // Payment failed or cancelled
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
       await supabase.from("ecpay_orders")
         .update({ trade_status: "failed", updated_at: new Date().toISOString() })
-        .eq("merchant_trade_no", MerchantTradeNo);
+        .eq("merchant_trade_no", MerchantTradeNo)
+        .eq("trade_status", "pending");
 
       return new Response("1|OK", {
         status: 200,
@@ -215,14 +257,11 @@ ${formFields}
         params[key] = String(value);
       }
 
-      const rtnCode = params.RtnCode;
-      const merchantTradeNo = params.MerchantTradeNo || "";
-      const isSuccess = rtnCode === "1" || rtnCode === 1;
-
-      // Redirect back to the app with result
-      const appUrl = isSuccess
-        ? `/payment/result?status=success&trade_no=${encodeURIComponent(merchantTradeNo)}`
-        : `/payment/result?status=failed&trade_no=${encodeURIComponent(merchantTradeNo)}`;
+      // Nothing here is trusted: this page only reports what the browser was sent,
+      // and every value is escaped before it reaches the markup.
+      const isSuccess = params.RtnCode === "1";
+      const merchantTradeNo = String(params.MerchantTradeNo || "").slice(0, 40);
+      const appUrl = `/payment/result?status=${isSuccess ? "success" : "failed"}&trade_no=${encodeURIComponent(merchantTradeNo)}`;
 
       const html = `<!DOCTYPE html>
 <html>
@@ -243,13 +282,13 @@ ${formFields}
   <div class="container">
     <div class="icon">${isSuccess ? "✅" : "❌"}</div>
     <h1>${isSuccess ? "付款成功" : "付款失敗"}</h1>
-    <p>交易編號：${merchantTradeNo}</p>
+    <p>交易編號：${escapeHtml(merchantTradeNo)}</p>
     <script>
       setTimeout(function() {
-        window.location.href = "${appUrl}";
+        window.location.href = ${JSON.stringify(appUrl)};
       }, 2000);
     </script>
-    <a href="${appUrl}" class="btn">返回拍賣平台</a>
+    <a href="${escapeHtml(appUrl)}" class="btn">返回拍賣平台</a>
   </div>
 </body>
 </html>`;
@@ -264,8 +303,8 @@ ${formFields}
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return new Response(JSON.stringify({ error: msg }), {
+    console.error("ecpay error", err);
+    return new Response(JSON.stringify({ error: "伺服器錯誤，請稍後再試" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

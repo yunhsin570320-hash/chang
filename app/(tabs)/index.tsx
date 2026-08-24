@@ -66,8 +66,7 @@ export default function ProductHall() {
       if (!silent) setFetchError(null);
       hasLoadedRef.current = true;
     } catch (err: any) {
-      const msg = err?.message || JSON.stringify(err);
-      if (!silent) setFetchError(msg);
+      if (!silent) setFetchError('無法載入商品，請稍後再試');
       console.warn('fetchProducts error:', err);
     } finally {
       setLoading(false);

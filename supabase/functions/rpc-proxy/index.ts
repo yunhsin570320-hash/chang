@@ -66,8 +66,6 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_verify_otp",
   "rpc_buyer_mark_paid",
   "rpc_seller_confirm_payment",
-  "rpc_upgrade_vip_seller",
-  "rpc_pay_vip_deposit",
   "rpc_seller_create_product_v2",
   "rpc_place_bid_v2",
   "rpc_admin_lock_user",
@@ -77,7 +75,8 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_admin_delete_product",
   "rpc_admin_delete_ended_products",
   "rpc_request_password_reset",
-  "rpc_reset_password",
+  "rpc_reset_password_v2",
+  "rpc_create_ecpay_order",
 ]);
 
 Deno.serve(async (req: Request) => {
@@ -123,7 +122,17 @@ Deno.serve(async (req: Request) => {
 
     const { data, error } = await supabase.rpc(fn, args || {});
 
-    return new Response(JSON.stringify({ data, error }), {
+    if (error) {
+      // The driver's error carries schema, constraint and policy detail: log it
+      // server-side and hand the caller a fixed message instead.
+      console.error("rpc failed", fn, error);
+      return new Response(
+        JSON.stringify({ data: null, error: { message: "操作失敗，請稍後再試" } }),
+        { status: 200, headers: { ...hdrs, "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(JSON.stringify({ data, error: null }), {
       headers: { ...hdrs, "Content-Type": "application/json" },
     });
   } catch {

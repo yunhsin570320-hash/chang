@@ -331,8 +331,7 @@ export default function SellerPage() {
       fetchProducts();
     } catch (error: any) {
       console.error('Error adding product:', error);
-      const msg = error?.message || String(error) || '未知錯誤';
-      Alert.alert('上架失敗', msg);
+      Alert.alert('上架失敗', '商品上架失敗，請稍後再試');
     } finally {
       setSubmitting(false);
     }
