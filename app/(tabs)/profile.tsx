@@ -228,13 +228,17 @@ export default function ProfilePage() {
 
     setSaving(true);
     try {
-      const { data: result } = await callRpc('rpc_update_profile', {
+      const { data: result, error: rpcError } = await callRpc('rpc_update_profile', {
         p_token: sessionToken,
         p_phone: editPhone.trim(),
         p_payment_method: editPayment.trim() || null,
         p_bank_account: editBankAccount.trim() || null,
         p_shipping_address: editAddress.trim(),
       });
+      if (rpcError) {
+        setEditError(rpcError.message);
+        return;
+      }
       if (result?.error) {
         setEditError(result.error);
         return;

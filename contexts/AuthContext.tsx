@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Profile, supabase, callRpc, heartbeat } from '../lib/supabase';
+import { Profile, callRpc, heartbeat } from '../lib/supabase';
 
 type UserRole = 'buyer' | 'seller';
 
@@ -108,19 +108,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshUser = useCallback(async () => {
-    if (!user) return;
+    if (!user || !sessionToken) return;
     try {
-      const { data: freshUser } = await supabase
-        .from('profiles')
-        .select('id, name, email, role, is_buyer, is_seller, is_admin, is_blocked, blocked_reason, blocked_at, warning_count, phone, phone_verified, phone_verified_at, payment_method, bank_account, shipping_address, created_at, membership_tier, vip_upgrade_paid, vip_deposit_paid, vip_upgrade_at, vip_deposit_at, lock_reason, locked_at, unlock_requested_at, unlock_reason, bid_abandon_count, membership_number, is_lifetime, last_seen_at')
-        .eq('id', user.id)
-        .maybeSingle();
+      const { data: freshUser } = await callRpc('rpc_validate_session', { p_token: sessionToken });
       if (freshUser) {
-        setUser(freshUser);
+        setUser(freshUser as Profile);
         AsyncStorage.setItem('auction_user', JSON.stringify(freshUser)).catch(() => {});
       }
     } catch {}
-  }, [user]);
+  }, [user, sessionToken]);
 
   const login = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
     setIsLoggingIn(true);
