@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Profile, supabase, callRpc } from '../lib/supabase';
+import { Profile, supabase, callRpc, heartbeat } from '../lib/supabase';
 
 type UserRole = 'buyer' | 'seller';
 
@@ -42,6 +42,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initialized.current = true;
     checkSession();
   }, []);
+
+  // Heartbeat — update online presence every 2 minutes while logged in
+  useEffect(() => {
+    if (!sessionToken) return;
+    heartbeat(sessionToken);
+    const interval = setInterval(() => {
+      heartbeat(sessionToken);
+    }, 120_000);
+    return () => clearInterval(interval);
+  }, [sessionToken]);
 
   const checkSession = async () => {
     try {
@@ -102,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data: freshUser } = await supabase
         .from('profiles')
-        .select('id, name, email, role, is_buyer, is_seller, is_admin, is_blocked, blocked_reason, blocked_at, warning_count, phone, phone_verified, phone_verified_at, payment_method, bank_account, shipping_address, created_at, membership_tier, vip_upgrade_paid, vip_deposit_paid, vip_upgrade_at, vip_deposit_at, lock_reason, locked_at, unlock_requested_at, unlock_reason, bid_abandon_count')
+        .select('id, name, email, role, is_buyer, is_seller, is_admin, is_blocked, blocked_reason, blocked_at, warning_count, phone, phone_verified, phone_verified_at, payment_method, bank_account, shipping_address, created_at, membership_tier, vip_upgrade_paid, vip_deposit_paid, vip_upgrade_at, vip_deposit_at, lock_reason, locked_at, unlock_requested_at, unlock_reason, bid_abandon_count, membership_number, is_lifetime, last_seen_at')
         .eq('id', user.id)
         .maybeSingle();
       if (freshUser) {

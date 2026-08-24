@@ -64,6 +64,9 @@ export type Profile = {
   vip_deposit_paid?: boolean;
   vip_upgrade_at?: string;
   vip_deposit_at?: string;
+  membership_number?: number;
+  is_lifetime?: boolean;
+  last_seen_at?: string;
   lock_reason?: string;
   locked_at?: string;
   unlock_requested_at?: string;
@@ -145,6 +148,22 @@ export type PaymentRequest = {
   created_at: string;
   reviewed_at?: string | null;
 };
+
+export type MemberStats = {
+  total_users: number;
+  online_count: number;
+  paid_members: number;
+  lifetime_members: number;
+};
+
+export async function getMemberStats(): Promise<MemberStats | null> {
+  const { data } = await callRpc<MemberStats>('rpc_get_member_stats');
+  return data;
+}
+
+export async function heartbeat(sessionToken: string): Promise<void> {
+  callRpc('rpc_heartbeat', { p_token: sessionToken }).then(() => {}, () => {});
+}
 
 export type Bid = {
   id: string;

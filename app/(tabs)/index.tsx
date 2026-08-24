@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Clock, Users, ShoppingBag, Trophy } from 'lucide-react-native';
-import { supabase, Product } from '../../lib/supabase';
+import { Clock, Users, ShoppingBag, Trophy, Wifi } from 'lucide-react-native';
+import { supabase, Product, getMemberStats, MemberStats } from '../../lib/supabase';
 import { CountdownTimer } from '../../components/CountdownTimer';
 
 interface ProductWithBids extends Product {
@@ -27,6 +27,7 @@ export default function ProductHall() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [memberStats, setMemberStats] = useState<MemberStats | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('active');
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -39,30 +40,31 @@ export default function ProductHall() {
   const fetchProducts = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name, status, end_time, winner_id, winning_amount, seller_id, created_at, image_url, seller:profiles!seller_id(id, name)')
-        .eq('is_approved', true)
-        .or('is_direct_buy.is.false,is_direct_buy.is.null')
-        .order('created_at', { ascending: false });
+      const [productsResp, bidsResp, statsResp] = await Promise.all([
+        supabase
+          .from('products')
+          .select('id, name, status, end_time, winner_id, winning_amount, seller_id, created_at, image_url, seller:profiles!seller_id(id, name)')
+          .eq('is_approved', true)
+          .or('is_direct_buy.is.false,is_direct_buy.is.null')
+          .order('created_at', { ascending: false }),
+        supabase.from('bids').select('product_id'),
+        getMemberStats(),
+      ]);
 
-      if (error) throw error;
-
-      const { data: bidsData } = await supabase
-        .from('bids')
-        .select('product_id');
+      if (productsResp.error) throw productsResp.error;
 
       const bidCounts = new Map<string, number>();
-      (bidsData || []).forEach((b: any) => {
+      (bidsResp.data || []).forEach((b: any) => {
         bidCounts.set(b.product_id, (bidCounts.get(b.product_id) || 0) + 1);
       });
 
       setProducts(
-        (data || []).map((p: any) => ({
+        (productsResp.data || []).map((p: any) => ({
           ...p,
           bid_count: bidCounts.get(p.id) || 0,
         }))
       );
+      if (statsResp) setMemberStats(statsResp);
       if (!silent) setFetchError(null);
       hasLoadedRef.current = true;
     } catch (err: any) {
@@ -188,6 +190,18 @@ export default function ProductHall() {
       <View style={styles.hero}>
         <Text style={styles.heroTitle}>暗標競標會</Text>
         <Text style={styles.heroSubtitle}>每件商品僅能出價一次，最高價者得標</Text>
+        {memberStats && (
+          <View style={styles.statsBar}>
+            <View style={styles.statItem}>
+              <Users size={13} color="#00D4AA" />
+              <Text style={styles.statText}>會員 {memberStats.total_users.toLocaleString()}</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Wifi size={13} color="#00D4AA" />
+              <Text style={styles.statText}>在線 {memberStats.online_count.toLocaleString()}</Text>
+            </View>
+          </View>
+        )}
       </View>
 
       <View style={styles.tabBar}>
@@ -249,6 +263,14 @@ const styles = StyleSheet.create({
   hero: { padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0, 212, 170, 0.1)' },
   heroTitle: { fontSize: 28, fontWeight: '800', color: '#fff', marginBottom: 6 },
   heroSubtitle: { fontSize: 14, color: '#888', lineHeight: 20 },
+  statsBar: {
+    flexDirection: 'row', gap: 16, marginTop: 12,
+  },
+  statItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(0,212,170,0.08)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+  },
+  statText: { color: '#00D4AA', fontSize: 12, fontWeight: '600' },
   tabBar: {
     flexDirection: 'row',
     borderBottomWidth: 1,

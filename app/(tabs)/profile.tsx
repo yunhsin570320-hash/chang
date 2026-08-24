@@ -17,10 +17,10 @@ import {
 import {
   User, Package, Crown, Bell, BellOff, Phone, CreditCard,
   MapPin, Building2, Edit3, Check, X, ChevronRight, Trophy, ShieldCheck, ShieldAlert,
-  Lock, Unlock, AlertCircle, Zap, Camera, Upload, Clock, ScrollText,
+  Lock, Unlock, AlertCircle, Zap, Camera, Upload, Clock, ScrollText, Users,
 } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { supabase, callRpc, Bid, Product, Notification, uploadPaymentProof, sendPhoneOtp, PaymentRequest } from '../../lib/supabase';
+import { supabase, callRpc, Bid, Product, Notification, uploadPaymentProof, sendPhoneOtp, PaymentRequest, getMemberStats, MemberStats } from '../../lib/supabase';
 import { WebCamera } from '../../components/WebCamera';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
@@ -79,6 +79,7 @@ export default function ProfilePage() {
   const [complaintError, setComplaintError] = useState<string | null>(null);
   const [complaintSuccess, setComplaintSuccess] = useState(false);
   const [rulesModalVisible, setRulesModalVisible] = useState(false);
+  const [memberStats, setMemberStats] = useState<MemberStats | null>(null);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
   const profileComplete = !!(user?.phone && user?.shipping_address);
@@ -93,7 +94,7 @@ export default function ProfilePage() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const [bidsResult, notifResult, paymentResult, settingsResult] = await Promise.all([
+      const [bidsResult, notifResult, paymentResult, settingsResult, statsResult] = await Promise.all([
         supabase
           .from('bids')
           .select('*, product:products(id, name, status, end_time, winner_id, winning_amount, image_url)')
@@ -111,6 +112,7 @@ export default function ProfilePage() {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }),
         supabase.from('site_settings').select('key, value'),
+        getMemberStats(),
       ]);
       setMyBids(bidsResult.data || []);
       setNotifications(notifResult.data || []);
@@ -120,6 +122,7 @@ export default function ProfilePage() {
         for (const row of settingsResult.data as any[]) map[row.key] = row.value;
         setSiteSettings(map);
       }
+      if (statsResult) setMemberStats(statsResult);
     } catch (error) {
       console.error('Error fetching profile data:', error);
     } finally {
@@ -534,6 +537,30 @@ export default function ProfilePage() {
             )}
           </View>
 
+          {/* Member stats */}
+          {memberStats && (
+            <View style={styles.infoSection}>
+              <Text style={styles.infoSectionTitle}>平台統計</Text>
+              <View style={styles.statsRow}>
+                <View style={styles.statsCard}>
+                  <Users size={18} color="#00D4AA" />
+                  <Text style={styles.statsValue}>{memberStats.total_users.toLocaleString()}</Text>
+                  <Text style={styles.statsLabel}>會員人數</Text>
+                </View>
+                <View style={styles.statsCard}>
+                  <View style={[styles.onlineDot, styles.onlineDotPulse]} />
+                  <Text style={styles.statsValue}>{memberStats.online_count.toLocaleString()}</Text>
+                  <Text style={styles.statsLabel}>在線人數</Text>
+                </View>
+              </View>
+              {memberStats.lifetime_members > 0 && (
+                <Text style={styles.lifetimeNote}>
+                  前 1000 名付費會員為終身制，目前已加入 {memberStats.lifetime_members.toLocaleString()} 人
+                </Text>
+              )}
+            </View>
+          )}
+
           {/* Membership section */}
           {!user.is_admin && (
             <View style={styles.infoSection}>
@@ -565,7 +592,7 @@ export default function ProfilePage() {
                     <View style={[styles.tierBadge, user.membership_tier === 'vip' ? styles.tierBadgeVip : styles.tierBadgeFree]}>
                       {user.membership_tier === 'vip' ? <Crown size={14} color="#FFD700" /> : <User size={14} color="#888" />}
                       <Text style={[styles.tierBadgeText, user.membership_tier === 'vip' && styles.tierBadgeTextVip]}>
-                        {user.membership_tier === 'vip' ? 'VIP 會員' : '免費會員'}
+                        {user.membership_tier === 'vip' ? (user.is_lifetime ? '終身會員' : '付費會員') : '免費會員'}
                       </Text>
                     </View>
                     {user.vip_deposit_paid && (
@@ -602,7 +629,7 @@ export default function ProfilePage() {
                         return (
                           <View style={styles.pendingBox}>
                             <Clock size={16} color="#FFD700" />
-                            <Text style={styles.pendingBoxText}>VIP 升級費 NT$500 — 審核中</Text>
+                            <Text style={styles.pendingBoxText}>平台維護費 NT$500 — 審核中</Text>
                           </View>
                         );
                       }
@@ -612,7 +639,7 @@ export default function ProfilePage() {
                           onPress={() => openPaymentModal('vip_upgrade')}
                         >
                           <Zap size={16} color="#000" />
-                          <Text style={styles.upgradeBtnText}>升級 VIP 會員 · NT$500</Text>
+                          <Text style={styles.upgradeBtnText}>繳交平台維護費 · NT$500</Text>
                         </TouchableOpacity>
                       );
                     })()
@@ -677,7 +704,7 @@ export default function ProfilePage() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {paymentType === 'vip_upgrade' ? '升級 VIP 會員' : '繳納競標保證金'}
+                {paymentType === 'vip_upgrade' ? '繳交平台維護費' : '繳納競標保證金'}
               </Text>
               <TouchableOpacity onPress={() => setPaymentModalVisible(false)}>
                 <X size={24} color="#fff" />
@@ -923,7 +950,7 @@ export default function ProfilePage() {
                   <Text style={styles.rulesSectionTitle}>會員規範</Text>
                 </View>
                 <Text style={styles.rulesText}>
-                  {'1. 會員註冊後須填寫並驗證手機號碼，以及填寫收貨地址，才能完整使用平台功能。\n2. 免費會員可使用直購廳，上架商品最多 5 件；升級 VIP 會員（NT$500）後無上架數量限制。\n3. 帳號若違反平台規範（如棄標、惡意檢舉、詐欺等），管理員可予以鎖定，鎖定後可提出申訴。\n4. 請勿使用他人帳號或冒名頂替，一經查證將立即鎖定帳號。\n5. 請妥善保管帳號密碼，因帳號遭盜用所造成的損失由帳號持有人自行承擔。'}
+                  {'1. 會員註冊後須填寫並驗證手機號碼，以及填寫收貨地址，才能完整使用平台功能。\n2. 免費會員可使用直購廳，上架商品最多 5 件；繳交平台維護費（NT$500）後無上架數量限制。\n3. 前 1000 名繳交平台維護費之會員為終身制，無需再次繳費。\n4. 帳號若違反平台規範（如棄標、惡意檢舉、詐欺等），管理員可予以鎖定，鎖定後可提出申訴。\n5. 請勿使用他人帳號或冒名頂替，一經查證將立即鎖定帳號。\n6. 請妥善保管帳號密碼，因帳號遭盜用所造成的損失由帳號持有人自行承擔。'}
                 </Text>
               </View>
 
@@ -1436,4 +1463,23 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
   },
   rulesFooterText: { color: '#666', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  statsRow: { flexDirection: 'row', gap: 12 },
+  statsCard: {
+    flex: 1, backgroundColor: '#1A1A2E', borderRadius: 14, padding: 16,
+    alignItems: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(0,212,170,0.15)',
+  },
+  statsValue: { color: '#fff', fontSize: 24, fontWeight: '800' },
+  statsLabel: { color: '#888', fontSize: 12 },
+  onlineDot: {
+    width: 10, height: 10, borderRadius: 5, backgroundColor: '#00D4AA',
+  },
+  onlineDotPulse: {
+    shadowColor: '#00D4AA', shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6, shadowRadius: 6, elevation: 4,
+  },
+  lifetimeNote: {
+    color: '#FFD700', fontSize: 12, marginTop: 10, lineHeight: 18,
+    backgroundColor: 'rgba(255,215,0,0.08)', borderRadius: 8, padding: 10,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.2)',
+  },
 });

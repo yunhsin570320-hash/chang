@@ -677,7 +677,7 @@ export default function SellerPage() {
             {user?.membership_tier !== 'vip' && !user?.is_admin && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingHorizontal: 4 }}>
                 <Text style={{ color: '#FFD700', fontSize: 12, flex: 1 }}>
-                  免費會員僅可上架直購商品（最多 5 件）。升級 VIP（NT$500）即可上架競標商品且無數量限制。
+                  免費會員僅可上架直購商品（最多 5 件）。繳交平台維護費（NT$500）即可上架競標商品且無數量限制。
                 </Text>
               </View>
             )}

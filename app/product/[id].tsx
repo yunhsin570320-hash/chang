@@ -216,7 +216,7 @@ export default function ProductDetail() {
     }
 
     if (!user.vip_deposit_paid) {
-      setBidError('參與競標需繳納保證金 NT$1000。請至「我的」頁面升級。');
+      setBidError('參與競標需繳納保證金 NT$1000。請至「我的」頁面繳費。');
       return;
     }
 
@@ -932,7 +932,7 @@ export default function ProductDetail() {
                 <View style={[styles.blindNotice, { borderBottomColor: 'rgba(255,215,0,0.3)' }]}>
                   <Text style={[styles.blindText, { color: '#FFD700' }]}>需繳納競標保證金</Text>
                 </View>
-                <Text style={styles.bidWarning}>參與競標需先繳納保證金 NT$1000。請至「我的」頁面升級。</Text>
+                <Text style={styles.bidWarning}>參與競標需先繳納保證金 NT$1000。請至「我的」頁面繳費。</Text>
               </View>
             </View>
           )}

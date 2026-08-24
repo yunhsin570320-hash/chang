@@ -729,7 +729,7 @@ export default function AdminPage() {
           <View style={styles.reportHeader}>
             <View style={[styles.reportTypeBadge, { backgroundColor: p.type === 'vip_upgrade' ? 'rgba(255,215,0,0.15)' : 'rgba(0,212,170,0.15)' }]}>
               <Text style={[styles.reportTypeText, { color: p.type === 'vip_upgrade' ? '#FFD700' : '#00D4AA' }]}>
-                {p.type === 'vip_upgrade' ? 'VIP 升級費' : '競標保證金'} · NT${p.amount}
+                {p.type === 'vip_upgrade' ? '平台維護費' : '競標保證金'} · NT${p.amount}
               </Text>
             </View>
             <View style={[styles.reportStatusBadge,
@@ -762,7 +762,7 @@ export default function AdminPage() {
                 style={[styles.confirmBtn, { flex: 1, marginBottom: 0, padding: 10 }]}
                 onPress={() => handleReviewPayment(p.id, true, p.user?.name || '會員')}
               >
-                <Text style={styles.confirmBtnText}>通過並升級</Text>
+                <Text style={styles.confirmBtnText}>通過並啟用</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.confirmBtn, { flex: 1, marginBottom: 0, padding: 10, backgroundColor: 'rgba(255,107,107,0.2)', borderWidth: 1, borderColor: 'rgba(255,107,107,0.4)' }]}

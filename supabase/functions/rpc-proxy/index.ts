@@ -77,6 +77,11 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_request_password_reset",
   "rpc_reset_password_v2",
   "rpc_create_ecpay_order",
+  "rpc_heartbeat",
+  "rpc_get_member_stats",
+  "rpc_submit_payment_request",
+  "rpc_get_my_payment_requests",
+  "rpc_admin_review_payment_request",
 ]);
 
 Deno.serve(async (req: Request) => {
