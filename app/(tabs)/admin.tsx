@@ -7,9 +7,10 @@ import {
   ShieldCheck, Users, Package, Flag, AlertTriangle,
   Ban, CheckCircle, X, ChevronRight, Eye, Trash2,
   RotateCcw, MessageSquare, Clock, TrendingUp, DollarSign, ImageIcon,
+  Wifi, Crown,
 } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { supabase, callRpc, Profile, Report, Product, PaymentRequest, getPaymentProofUrl } from '../../lib/supabase';
+import { supabase, callRpc, Profile, Report, Product, PaymentRequest, getPaymentProofUrl, getMemberStats, MemberStats } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 
@@ -22,6 +23,9 @@ type Stats = {
   flaggedProducts: number;
   pendingReports: number;
   totalBids: number;
+  onlineCount: number;
+  paidMembers: number;
+  lifetimeMembers: number;
 };
 
 type MemberWithCounts = Profile & {
@@ -132,11 +136,12 @@ export default function AdminPage() {
     if (!user || !isAdmin) return;
     setLoading(true);
     try {
-      const [usersRes, productsRes, reportsRes, bidsRes] = await Promise.all([
+      const [usersRes, productsRes, reportsRes, bidsRes, memberStats] = await Promise.all([
         supabase.from('profiles').select('id, is_admin, is_blocked, warning_count', { count: 'exact' }),
         supabase.from('products').select('id, is_flagged, is_approved', { count: 'exact' }),
         supabase.from('reports').select('id, status', { count: 'exact' }),
         supabase.from('bids').select('id', { count: 'exact', head: true }),
+        getMemberStats(),
       ]);
 
       const allUsers = usersRes.data || [];
@@ -150,6 +155,9 @@ export default function AdminPage() {
         flaggedProducts: allProducts.filter(p => p.is_flagged).length,
         pendingReports: allReports.filter(r => r.status === 'pending').length,
         totalBids: bidsRes.count || 0,
+        onlineCount: memberStats?.online_count ?? 0,
+        paidMembers: memberStats?.paid_members ?? 0,
+        lifetimeMembers: memberStats?.lifetime_members ?? 0,
       });
     } catch (e) {
       console.error(e);
@@ -164,7 +172,7 @@ export default function AdminPage() {
       if (tab === 'members') {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, name, email, is_admin, is_blocked, is_buyer, is_seller, phone, phone_verified, warning_count, blocked_reason, created_at')
+          .select('id, name, email, is_admin, is_blocked, is_buyer, is_seller, phone, phone_verified, warning_count, blocked_reason, created_at, membership_tier, membership_number, is_lifetime, vip_upgrade_paid, vip_deposit_paid, last_seen_at')
           .order('created_at', { ascending: false });
         if (error) throw error;
         setMembers((data || []).filter((u: any) => !u.is_admin));
@@ -351,6 +359,9 @@ export default function AdminPage() {
       <View style={styles.statsGrid}>
         {[
           { label: '總會員數', value: stats?.totalUsers ?? '—', icon: <Users size={20} color="#00D4AA" />, color: '#00D4AA' },
+          { label: '在線人數', value: stats?.onlineCount ?? '—', icon: <Wifi size={20} color="#00D4AA" />, color: '#00D4AA' },
+          { label: '付費會員', value: stats?.paidMembers ?? '—', icon: <Crown size={20} color="#FFD700" />, color: '#FFD700' },
+          { label: '終身會員', value: stats?.lifetimeMembers ?? '—', icon: <Crown size={20} color="#FF8C00" />, color: '#FF8C00' },
           { label: '封鎖帳號', value: stats?.blockedUsers ?? '—', icon: <Ban size={20} color="#FF6B6B" />, color: '#FF6B6B' },
           { label: '上架商品', value: stats?.totalProducts ?? '—', icon: <Package size={20} color="#FFD700" />, color: '#FFD700' },
           { label: '檢舉商品', value: stats?.flaggedProducts ?? '—', icon: <AlertTriangle size={20} color="#FF8C00" />, color: '#FF8C00' },
@@ -434,12 +445,23 @@ export default function AdminPage() {
                 {(m.warning_count || 0) > 0 && (
                   <View style={styles.warnBadge}><Text style={styles.warnBadgeText}>警告 {m.warning_count}</Text></View>
                 )}
+                {m.membership_tier === 'vip' && (
+                  <View style={[styles.warnBadge, { backgroundColor: 'rgba(255,215,0,0.15)', borderColor: 'rgba(255,215,0,0.4)' }]}>
+                    <Text style={[styles.warnBadgeText, { color: '#FFD700' }]}>
+                      {m.is_lifetime ? '終身' : '付費'}#{m.membership_number ?? ''}
+                    </Text>
+                  </View>
+                )}
+                {m.last_seen_at && new Date(m.last_seen_at).getTime() > Date.now() - 5 * 60 * 1000 && (
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#00D4AA', marginLeft: 2 }} />
+                )}
               </View>
               <Text style={styles.memberEmail}>{m.email}</Text>
               <View style={styles.memberMeta}>
                 {m.is_buyer && <Text style={styles.metaChip}>買家</Text>}
                 {m.is_seller && <Text style={[styles.metaChip, { color: '#FFD700', borderColor: '#FFD700' }]}>賣家</Text>}
                 {m.phone && <Text style={styles.metaChip}>{m.phone}{m.phone_verified ? ' ✓' : ' !'}</Text>}
+                {m.vip_deposit_paid && <Text style={[styles.metaChip, { color: '#00D4AA', borderColor: '#00D4AA' }]}>已繳保證金</Text>}
               </View>
               {m.is_blocked && m.blocked_reason && (
                 <Text style={styles.blockReason}>封鎖原因：{m.blocked_reason}</Text>
