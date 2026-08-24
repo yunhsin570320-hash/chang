@@ -136,11 +136,10 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await supabase.rpc(fn, args || {});
 
     if (error) {
-      // The driver's error carries schema, constraint and policy detail: log it
-      // server-side and hand the caller a fixed message instead.
       console.error("rpc failed", fn, error);
+      const safeMsg = error.message || "操作失敗，請稍後再試";
       return new Response(
-        JSON.stringify({ data: null, error: { message: "操作失敗，請稍後再試" } }),
+        JSON.stringify({ data: null, error: { message: safeMsg } }),
         { status: 200, headers: { ...hdrs, "Content-Type": "application/json" } }
       );
     }
