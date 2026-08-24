@@ -165,6 +165,127 @@ export async function heartbeat(sessionToken: string): Promise<void> {
   callRpc('rpc_heartbeat', { p_token: sessionToken }).then(() => {}, () => {});
 }
 
+export type DashboardStats = {
+  success?: boolean;
+  error?: string;
+  total_users: number;
+  blocked_users: number;
+  online_count: number;
+  paid_members: number;
+  lifetime_members: number;
+  total_products: number;
+  flagged_products: number;
+  pending_reports: number;
+  total_bids: number;
+};
+
+export async function getAdminDashboard(sessionToken: string): Promise<DashboardStats | null> {
+  const { data } = await callRpc<DashboardStats>('rpc_admin_get_dashboard', { p_token: sessionToken });
+  return data;
+}
+
+export type AdminMember = {
+  id: string;
+  name: string;
+  email: string;
+  is_admin: boolean;
+  is_blocked: boolean;
+  is_buyer: boolean;
+  is_seller: boolean;
+  phone: string | null;
+  phone_verified: boolean;
+  warning_count: number;
+  blocked_reason: string | null;
+  created_at: string;
+  membership_tier: string;
+  membership_number: number | null;
+  is_lifetime: boolean;
+  vip_upgrade_paid: boolean;
+  vip_deposit_paid: boolean;
+};
+
+export async function getAdminMembers(sessionToken: string): Promise<AdminMember[]> {
+  const { data } = await callRpc<{ members: AdminMember[] }>('rpc_admin_get_members', { p_token: sessionToken });
+  return data?.members || [];
+}
+
+export type AdminReport = {
+  id: string;
+  type: string;
+  reason: string;
+  status: string;
+  created_at: string;
+  product_id: string | null;
+  reporter_id: string | null;
+  reported_user_id: string | null;
+  reporter_name: string | null;
+  reporter_email: string | null;
+  reported_user_name: string | null;
+  reported_user_email: string | null;
+  reported_user_blocked: boolean;
+  product_name: string | null;
+};
+
+export async function getAdminReports(sessionToken: string): Promise<AdminReport[]> {
+  const { data } = await callRpc<{ reports: AdminReport[] }>('rpc_admin_get_reports', { p_token: sessionToken });
+  return data?.reports || [];
+}
+
+export type AdminComplaint = {
+  id: string;
+  reason: string;
+  status: string;
+  admin_response: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  user_blocked: boolean;
+  lock_reason: string | null;
+};
+
+export async function getAdminComplaints(sessionToken: string): Promise<AdminComplaint[]> {
+  const { data } = await callRpc<{ complaints: AdminComplaint[] }>('rpc_admin_get_complaints', { p_token: sessionToken });
+  return data?.complaints || [];
+}
+
+export type AdminPaymentRequest = {
+  id: string;
+  type: 'vip_upgrade' | 'vip_deposit';
+  amount: number;
+  payment_method: string | null;
+  proof_image_url: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+};
+
+export async function getAdminPaymentRequests(sessionToken: string): Promise<AdminPaymentRequest[]> {
+  const { data } = await callRpc<{ payment_requests: AdminPaymentRequest[] }>('rpc_admin_get_payment_requests', { p_token: sessionToken });
+  return data?.payment_requests || [];
+}
+
+export type AdminActionLogEntry = {
+  id: string;
+  action_type: string;
+  reason: string;
+  created_at: string;
+  admin_id: string | null;
+  admin_name: string | null;
+  target_user_id: string | null;
+  target_user_name: string | null;
+};
+
+export async function getAdminActionLog(sessionToken: string): Promise<AdminActionLogEntry[]> {
+  const { data } = await callRpc<{ action_log: AdminActionLogEntry[] }>('rpc_admin_get_action_log', { p_token: sessionToken });
+  return data?.action_log || [];
+}
+
 export type Bid = {
   id: string;
   product_id: string;

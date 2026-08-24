@@ -10,7 +10,12 @@ import {
   Wifi, Crown,
 } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { supabase, callRpc, Profile, Report, Product, PaymentRequest, getPaymentProofUrl, getMemberStats, MemberStats } from '../../lib/supabase';
+import {
+  supabase, callRpc, Profile, Report, Product, PaymentRequest, getPaymentProofUrl,
+  getAdminDashboard, getAdminMembers, getAdminReports, getAdminComplaints,
+  getAdminPaymentRequests, getAdminActionLog,
+  AdminMember, AdminReport, AdminComplaint, AdminPaymentRequest, AdminActionLogEntry,
+} from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 
@@ -28,11 +33,7 @@ type Stats = {
   lifetimeMembers: number;
 };
 
-type MemberWithCounts = Profile & {
-  bid_count?: number;
-  product_count?: number;
-  report_count?: number;
-};
+type MemberWithCounts = AdminMember;
 
 const REPORT_TYPE_LABELS: Record<string, string> = {
   fake_product: '不實商品',
@@ -102,10 +103,10 @@ export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [members, setMembers] = useState<MemberWithCounts[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [reports, setReports] = useState<Report[]>([]);
-  const [actionLog, setActionLog] = useState<any[]>([]);
-  const [complaints, setComplaints] = useState<any[]>([]);
-  const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
+  const [reports, setReports] = useState<AdminReport[]>([]);
+  const [actionLog, setActionLog] = useState<AdminActionLogEntry[]>([]);
+  const [complaints, setComplaints] = useState<AdminComplaint[]>([]);
+  const [paymentRequests, setPaymentRequests] = useState<AdminPaymentRequest[]>([]);
   const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
   const [editBankName, setEditBankName] = useState('');
   const [editAccount, setEditAccount] = useState('');
@@ -133,49 +134,36 @@ export default function AdminPage() {
   const [actioning, setActioning] = useState(false);
 
   const fetchStats = useCallback(async () => {
-    if (!user || !isAdmin) return;
+    if (!user || !isAdmin || !sessionToken) return;
     setLoading(true);
     try {
-      const [usersRes, productsRes, reportsRes, bidsRes, memberStats] = await Promise.all([
-        supabase.from('profiles').select('id, is_admin, is_blocked, warning_count', { count: 'exact' }),
-        supabase.from('products').select('id, is_flagged, is_approved', { count: 'exact' }),
-        supabase.from('reports').select('id, status', { count: 'exact' }),
-        supabase.from('bids').select('id', { count: 'exact', head: true }),
-        getMemberStats(),
-      ]);
-
-      const allUsers = usersRes.data || [];
-      const allProducts = productsRes.data || [];
-      const allReports = reportsRes.data || [];
-
-      setStats({
-        totalUsers: allUsers.filter(u => !u.is_admin).length,
-        blockedUsers: allUsers.filter(u => u.is_blocked).length,
-        totalProducts: allProducts.length,
-        flaggedProducts: allProducts.filter(p => p.is_flagged).length,
-        pendingReports: allReports.filter(r => r.status === 'pending').length,
-        totalBids: bidsRes.count || 0,
-        onlineCount: memberStats?.online_count ?? 0,
-        paidMembers: memberStats?.paid_members ?? 0,
-        lifetimeMembers: memberStats?.lifetime_members ?? 0,
-      });
+      const dash = await getAdminDashboard(sessionToken);
+      if (dash && !dash.error) {
+        setStats({
+          totalUsers: dash.total_users ?? 0,
+          blockedUsers: dash.blocked_users ?? 0,
+          totalProducts: dash.total_products ?? 0,
+          flaggedProducts: dash.flagged_products ?? 0,
+          pendingReports: dash.pending_reports ?? 0,
+          totalBids: dash.total_bids ?? 0,
+          onlineCount: dash.online_count ?? 0,
+          paidMembers: dash.paid_members ?? 0,
+          lifetimeMembers: dash.lifetime_members ?? 0,
+        });
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [user, isAdmin]);
+  }, [user, isAdmin, sessionToken]);
 
   const fetchTabData = useCallback(async (tab: AdminTab) => {
-    if (!user || !isAdmin) return;
+    if (!user || !isAdmin || !sessionToken) return;
     try {
       if (tab === 'members') {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, name, email, is_admin, is_blocked, is_buyer, is_seller, phone, phone_verified, warning_count, blocked_reason, created_at, membership_tier, membership_number, is_lifetime, vip_upgrade_paid, vip_deposit_paid')
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        setMembers((data || []).filter((u: any) => !u.is_admin));
+        const memberList = await getAdminMembers(sessionToken);
+        setMembers(memberList as any);
       } else if (tab === 'products') {
         const { data, error } = await supabase
           .from('products')
@@ -184,26 +172,14 @@ export default function AdminPage() {
         if (error) throw error;
         setProducts((data || []) as any);
       } else if (tab === 'reports') {
-        const { data, error } = await supabase
-          .from('reports')
-          .select('id, type, reason, status, created_at, product_id, reporter_id, reported_user_id, reporter:profiles!reporter_id(id, name, email), reported_user:profiles!reported_user_id(id, name, email, is_blocked), product:products(id, name)')
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        setReports((data || []) as any);
+        const reportList = await getAdminReports(sessionToken);
+        setReports(reportList as any);
       } else if (tab === 'complaints') {
-        const { data, error } = await supabase
-          .from('complaints')
-          .select('id, reason, status, admin_response, created_at, resolved_at, user_id, user:profiles!user_id(id, name, email, is_blocked, lock_reason)')
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        setComplaints(data || []);
+        const complaintList = await getAdminComplaints(sessionToken);
+        setComplaints(complaintList as any);
       } else if (tab === 'payments') {
-        const { data, error } = await supabase
-          .from('payment_requests')
-          .select('id, type, amount, payment_method, proof_image_url, status, admin_note, created_at, reviewed_at, user_id, user:profiles!user_id(id, name, email)')
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        setPaymentRequests(data || []);
+        const payList = await getAdminPaymentRequests(sessionToken);
+        setPaymentRequests(payList as any);
       } else if (tab === 'settings') {
         const { data, error } = await supabase.from('site_settings').select('key, value');
         if (error) throw error;
@@ -216,18 +192,13 @@ export default function AdminPage() {
         setEditInstructions(map.payment_instructions || '');
         setSettingsSaved(false);
       } else if (tab === 'actions') {
-        const { data, error } = await supabase
-          .from('admin_actions')
-          .select('id, action_type, reason, created_at, admin:profiles!admin_id(id, name), target_user:profiles!target_user_id(id, name)')
-          .order('created_at', { ascending: false })
-          .limit(100);
-        if (error) throw error;
-        setActionLog(data || []);
+        const logList = await getAdminActionLog(sessionToken);
+        setActionLog(logList as any);
       }
     } catch (e) {
       console.error('fetchTabData error for tab', tab, e);
     }
-  }, [user, isAdmin]);
+  }, [user, isAdmin, sessionToken]);
 
 
   const fetchAll = useCallback(async (currentTab: AdminTab) => {
@@ -401,7 +372,7 @@ export default function AdminPage() {
           <View style={{ flex: 1 }}>
             <Text style={styles.actionLogText}>
               <Text style={{ color: ACTION_COLORS[a.action_type] || '#fff' }}>{ACTION_TYPE_LABELS[a.action_type]}</Text>
-              {a.target_user && <Text style={styles.actionLogSub}> — {a.target_user.name}</Text>}
+              {a.target_user_name && <Text style={styles.actionLogSub}> — {a.target_user_name}</Text>}
             </Text>
             <Text style={styles.actionLogReason} numberOfLines={1}>{a.reason}</Text>
             <Text style={styles.actionLogTime}>{new Date(a.created_at).toLocaleString('zh-TW')}</Text>
@@ -570,18 +541,18 @@ export default function AdminPage() {
             <View style={styles.reportParties}>
               <Text style={styles.reportParty}>
                 <Text style={styles.reportPartyLabel}>檢舉人：</Text>
-                {(r as any).reporter?.name || '—'}
+                {(r as any).reporter_name || '—'}
               </Text>
               <Text style={styles.reportParty}>
                 <Text style={styles.reportPartyLabel}>被檢舉：</Text>
-                {(r as any).reported_user?.name || '—'}
-                {(r as any).reported_user?.is_blocked && <Text style={{ color: '#FF6B6B' }}> [封鎖中]</Text>}
+                {(r as any).reported_user_name || '—'}
+                {(r as any).reported_user_blocked && <Text style={{ color: '#FF6B6B' }}> [封鎖中]</Text>}
               </Text>
             </View>
             {r.product_id && (
               <TouchableOpacity onPress={() => router.push(`/product/${r.product_id}`)}>
                 <Text style={[styles.reportProduct, { textDecorationLine: 'underline' }]}>
-                  商品：{(r as any).product?.name || r.product_id}
+                  商品：{(r as any).product_name || r.product_id}
                 </Text>
               </TouchableOpacity>
             )}
@@ -589,7 +560,7 @@ export default function AdminPage() {
             <View style={styles.reportFooter}>
               <Text style={styles.reportDate}>{new Date(r.created_at).toLocaleDateString('zh-TW')}</Text>
               {r.status === 'pending' && (
-                <TouchableOpacity style={styles.actionBtn} onPress={() => openActionModal('report', r.id, `${(r as any).reported_user?.name || '用戶'} 的檢舉`)}>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => openActionModal('report', r.id, `${(r as any).reported_user_name || '用戶'} 的檢舉`)}>
                   <Text style={styles.actionBtnText}>處理</Text>
                 </TouchableOpacity>
               )}
@@ -762,7 +733,7 @@ export default function AdminPage() {
           </View>
           <Text style={styles.reportParty}>
             <Text style={styles.reportPartyLabel}>會員：</Text>
-            {p.user?.name} ({p.user?.email})
+            {p.user_name} ({p.user_email})
           </Text>
           {p.payment_method && (
             <Text style={styles.reportParty}>
@@ -779,13 +750,13 @@ export default function AdminPage() {
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
               <TouchableOpacity
                 style={[styles.confirmBtn, { flex: 1, marginBottom: 0, padding: 10 }]}
-                onPress={() => handleReviewPayment(p.id, true, p.user?.name || '會員')}
+                onPress={() => handleReviewPayment(p.id, true, p.user_name || '會員')}
               >
                 <Text style={styles.confirmBtnText}>通過並啟用</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.confirmBtn, { flex: 1, marginBottom: 0, padding: 10, backgroundColor: 'rgba(255,107,107,0.2)', borderWidth: 1, borderColor: 'rgba(255,107,107,0.4)' }]}
-                onPress={() => handleReviewPayment(p.id, false, p.user?.name || '會員')}
+                onPress={() => handleReviewPayment(p.id, false, p.user_name || '會員')}
               >
                 <Text style={[styles.confirmBtnText, { color: '#FF6B6B' }]}>駁回</Text>
               </TouchableOpacity>
@@ -852,10 +823,10 @@ export default function AdminPage() {
           </View>
           <Text style={styles.reportParty}>
             <Text style={styles.reportPartyLabel}>申訴人：</Text>
-            {c.user?.name} ({c.user?.email})
+            {c.user_name} ({c.user_email})
           </Text>
-          {c.user?.is_blocked && (
-            <Text style={styles.blockReason}>鎖定原因：{c.user?.lock_reason || '未知'}</Text>
+          {c.user_blocked && (
+            <Text style={styles.blockReason}>鎖定原因：{c.lock_reason || '未知'}</Text>
           )}
           <Text style={styles.reportReason}>{c.reason}</Text>
           {c.admin_response && (
@@ -897,7 +868,7 @@ export default function AdminPage() {
               {ACTION_TYPE_LABELS[a.action_type] || a.action_type}
             </Text>
           </View>
-          {a.target_user && <Text style={styles.actionTarget}>對象：{a.target_user.name}</Text>}
+          {a.target_user_name && <Text style={styles.actionTarget}>對象：{a.target_user_name}</Text>}
           <Text style={styles.actionReasonFull}>原因：{a.reason}</Text>
           <Text style={styles.actionTime}>{new Date(a.created_at).toLocaleString('zh-TW')}</Text>
         </View>
