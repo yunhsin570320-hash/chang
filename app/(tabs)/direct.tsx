@@ -86,6 +86,10 @@ export default function DirectHall() {
 
   const handleBuyPress = (item: DirectProduct) => {
     if (!user) return;
+    if (user.is_blocked) {
+      setBuyError(`帳號已鎖定：${user.lock_reason || user.blocked_reason || '違反平台規範'}`);
+      return;
+    }
     setBuyError(null);
     setBuySuccess(false);
     setBuyQuantity('1');

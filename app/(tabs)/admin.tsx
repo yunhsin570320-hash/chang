@@ -449,25 +449,36 @@ export default function AdminPage() {
     </View>
   );
 
-  const handleResolveComplaint = async (complaintId: string, approve: boolean) => {
-    if (!sessionToken) return;
-    const response = prompt(approve ? '請輸入解鎖原因/回覆' : '請輸入駁回原因') || '';
-    if (!response.trim()) return;
+  const [resolveModal, setResolveModal] = useState<{ complaintId: string; approve: boolean } | null>(null);
+  const [resolveResponse, setResolveResponse] = useState('');
+  const [resolveSubmitting, setResolveSubmitting] = useState(false);
+
+  const handleResolveComplaint = (complaintId: string, approve: boolean) => {
+    setResolveResponse('');
+    setResolveModal({ complaintId, approve });
+  };
+
+  const confirmResolveComplaint = async () => {
+    if (!resolveModal || !sessionToken || !resolveResponse.trim()) return;
+    setResolveSubmitting(true);
     try {
       const { data, error } = await callRpc('rpc_admin_resolve_complaint', {
         p_token: sessionToken,
-        p_complaint_id: complaintId,
-        p_approve: approve,
-        p_response: response.trim(),
+        p_complaint_id: resolveModal.complaintId,
+        p_approve: resolveModal.approve,
+        p_response: resolveResponse.trim(),
       });
       if (error || data?.error) {
-        alert(data?.error || '操作失敗');
+        Alert.alert('操作失敗', data?.error || '請稍後再試');
         return;
       }
+      setResolveModal(null);
       fetchTabData('complaints');
       fetchStats();
     } catch {
-      alert('操作失敗');
+      Alert.alert('操作失敗', '請稍後再試');
+    } finally {
+      setResolveSubmitting(false);
     }
   };
 
@@ -626,6 +637,43 @@ export default function AdminPage() {
               disabled={!selectedAction || !actionReason.trim() || actioning}
             >
               {actioning ? <ActivityIndicator color="#000" /> : <Text style={styles.confirmBtnText}>確認執行</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Resolve Complaint Modal */}
+      <Modal visible={!!resolveModal} transparent animationType="slide" onRequestClose={() => setResolveModal(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHead}>
+              <Text style={styles.modalTitle}>{resolveModal?.approve ? '通過申訴並解鎖' : '駁回申訴'}</Text>
+              <TouchableOpacity onPress={() => setResolveModal(null)}>
+                <X size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalLabel}>回覆說明 *</Text>
+            <TextInput
+              style={styles.reasonInput}
+              value={resolveResponse}
+              onChangeText={setResolveResponse}
+              placeholder={resolveModal?.approve ? '請輸入解鎖原因/回覆給會員' : '請輸入駁回原因'}
+              placeholderTextColor="#444"
+              multiline
+              numberOfLines={3}
+            />
+
+            <TouchableOpacity
+              style={[styles.confirmBtn, (!resolveResponse.trim() || resolveSubmitting) && styles.confirmBtnDisabled, !resolveModal?.approve && { backgroundColor: 'rgba(255,107,107,0.2)' }]}
+              onPress={confirmResolveComplaint}
+              disabled={!resolveResponse.trim() || resolveSubmitting}
+            >
+              {resolveSubmitting ? <ActivityIndicator color="#000" /> : (
+                <Text style={[styles.confirmBtnText, !resolveModal?.approve && { color: '#FF6B6B' }]}>
+                  {resolveModal?.approve ? '確認解鎖' : '確認駁回'}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
