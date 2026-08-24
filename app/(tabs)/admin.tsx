@@ -883,13 +883,13 @@ export default function AdminPage() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBarScroll} contentContainerStyle={styles.tabBarContent}>
         {([
           { key: 'dashboard', label: '總覽' },
-          { key: 'members', label: `會員 (${stats?.totalUsers ?? '…'})` },
-          { key: 'products', label: `商品 (${stats?.totalProducts ?? '…'})` },
-          { key: 'reports', label: `檢舉 ${(stats?.pendingReports ?? 0) > 0 ? `(${stats?.pendingReports})` : ''}` },
+          { key: 'members', label: `會員${stats?.totalUsers != null ? ` ${stats!.totalUsers}` : ''}` },
+          { key: 'products', label: `商品${stats?.totalProducts != null ? ` ${stats!.totalProducts}` : ''}` },
+          { key: 'reports', label: `檢舉${(stats?.pendingReports ?? 0) > 0 ? ` ${stats!.pendingReports}` : ''}` },
           { key: 'complaints', label: '申訴' },
-          { key: 'payments', label: `繳費審核 ${(paymentRequests.filter(p => p.status === 'pending').length) > 0 ? `(${paymentRequests.filter(p => p.status === 'pending').length})` : ''}` },
-          { key: 'settings', label: '收款設定' },
-          { key: 'actions', label: '操作紀錄' },
+          { key: 'payments', label: `繳費${paymentRequests.filter(p => p.status === 'pending').length > 0 ? ` ${paymentRequests.filter(p => p.status === 'pending').length}` : ''}` },
+          { key: 'settings', label: '收款' },
+          { key: 'actions', label: '紀錄' },
         ] as { key: AdminTab; label: string }[]).map(t => (
           <TouchableOpacity
             key={t.key}
@@ -1129,9 +1129,9 @@ const styles = StyleSheet.create({
   loadingBox: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   tabBarScroll: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)', maxHeight: 48 },
   tabBarContent: { paddingHorizontal: 8, gap: 4, alignItems: 'center' },
-  tab: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tab: { paddingHorizontal: 10, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: '#00D4AA' },
-  tabText: { color: '#666', fontSize: 13, fontWeight: '600' },
+  tabText: { color: '#666', fontSize: 12, fontWeight: '600' },
   tabTextActive: { color: '#00D4AA' },
   tabContent: { flex: 1 },
   sectionTitle: { color: '#888', fontSize: 13, fontWeight: '700', marginBottom: 12, marginTop: 8, textTransform: 'uppercase', letterSpacing: 1 },
