@@ -449,7 +449,11 @@ export async function initiateECPayCheckout(
         'apikey': supabaseAnonKey,
         'Authorization': `Bearer ${supabaseAnonKey}`,
       },
-      body: JSON.stringify({ merchantTradeNo, sessionToken }),
+      body: JSON.stringify({
+        merchantTradeNo,
+        sessionToken,
+        clientOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+      }),
     });
 
     if (!res.ok) {

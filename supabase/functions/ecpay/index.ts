@@ -96,6 +96,7 @@ Deno.serve(async (req: Request) => {
       const body = await req.json().catch(() => ({}));
       const merchantTradeNo = typeof body?.merchantTradeNo === "string" ? body.merchantTradeNo : "";
       const sessionToken = typeof body?.sessionToken === "string" ? body.sessionToken : "";
+      const clientOrigin = typeof body?.clientOrigin === "string" ? body.clientOrigin.replace(/\/+$/, "") : "";
 
       if (!merchantTradeNo || !sessionToken) {
         return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -261,7 +262,9 @@ ${formFields}
       // and every value is escaped before it reaches the markup.
       const isSuccess = params.RtnCode === "1";
       const merchantTradeNo = String(params.MerchantTradeNo || "").slice(0, 40);
-      const appUrl = `/payment/result?status=${isSuccess ? "success" : "failed"}&trade_no=${encodeURIComponent(merchantTradeNo)}`;
+      const returnUrl = clientOrigin
+        ? `${clientOrigin}/payment/result?status=${isSuccess ? "success" : "failed"}&trade_no=${encodeURIComponent(merchantTradeNo)}`
+        : `/payment/result?status=${isSuccess ? "success" : "failed"}&trade_no=${encodeURIComponent(merchantTradeNo)}`;
 
       const html = `<!DOCTYPE html>
 <html>
@@ -285,10 +288,10 @@ ${formFields}
     <p>交易編號：${escapeHtml(merchantTradeNo)}</p>
     <script>
       setTimeout(function() {
-        window.location.href = ${JSON.stringify(appUrl)};
+        window.location.href = ${JSON.stringify(returnUrl)};
       }, 2000);
     </script>
-    <a href="${escapeHtml(appUrl)}" class="btn">返回拍賣平台</a>
+    <a href="${escapeHtml(returnUrl)}" class="btn">返回拍賣平台</a>
   </div>
 </body>
 </html>`;
