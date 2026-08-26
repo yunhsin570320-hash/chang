@@ -112,6 +112,8 @@ export default function AdminPage() {
   const [editAccount, setEditAccount] = useState('');
   const [editHolder, setEditHolder] = useState('');
   const [editInstructions, setEditInstructions] = useState('');
+  const [editTotalOffset, setEditTotalOffset] = useState('0');
+  const [editOnlineOffset, setEditOnlineOffset] = useState('0');
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -188,6 +190,8 @@ export default function AdminPage() {
         setEditAccount(map.payment_account || '');
         setEditHolder(map.payment_holder || '');
         setEditInstructions(map.payment_instructions || '');
+        setEditTotalOffset(map.display_total_users_offset || '0');
+        setEditOnlineOffset(map.display_online_count_offset || '0');
         setSettingsSaved(false);
       } else if (tab === 'actions') {
         const logList = await getAdminActionLog(sessionToken);
@@ -658,6 +662,8 @@ export default function AdminPage() {
         ['payment_account', editAccount.trim()],
         ['payment_holder', editHolder.trim()],
         ['payment_instructions', editInstructions.trim()],
+        ['display_total_users_offset', editTotalOffset.trim() || '0'],
+        ['display_online_count_offset', editOnlineOffset.trim() || '0'],
       ];
       for (const [key, value] of pairs) {
         const { data, error } = await callRpc('rpc_admin_update_site_setting', {
@@ -738,6 +744,35 @@ export default function AdminPage() {
           戶名：{editHolder || '待設定'}{'\n'}
           {editInstructions || '繳費說明待設定'}
         </Text>
+      </View>
+
+      <Text style={[styles.sectionTitle, { marginTop: 28 }]}>顯示人數設定</Text>
+      <Text style={styles.settingsDesc}>設定加在人數上的顯示增量，讓平台看起來更活躍。實際會員數不受影響，僅改變公開顯示的數字。正式上線後可隨時調整或歸零。</Text>
+
+      <View style={styles.settingsCard}>
+        <Text style={styles.settingsLabel}>會員人數增量</Text>
+        <TextInput
+          style={styles.settingsInput}
+          value={editTotalOffset}
+          onChangeText={setEditTotalOffset}
+          placeholder="0"
+          placeholderTextColor="#444"
+          keyboardType="numeric"
+        />
+        <Text style={styles.settingsHint}>顯示會員數 = 實際會員 + 此數字</Text>
+      </View>
+
+      <View style={styles.settingsCard}>
+        <Text style={styles.settingsLabel}>在線人數增量</Text>
+        <TextInput
+          style={styles.settingsInput}
+          value={editOnlineOffset}
+          onChangeText={setEditOnlineOffset}
+          placeholder="0"
+          placeholderTextColor="#444"
+          keyboardType="numeric"
+        />
+        <Text style={styles.settingsHint}>顯示在線數 = 實際在線 + 此數字</Text>
       </View>
 
       <TouchableOpacity
@@ -1333,6 +1368,7 @@ const styles = StyleSheet.create({
   settingsDesc: { color: '#888', fontSize: 13, marginBottom: 16, lineHeight: 20 },
   settingsCard: { marginBottom: 14 },
   settingsLabel: { color: '#aaa', fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  settingsHint: { color: '#555', fontSize: 11, marginTop: 4 },
   settingsInput: {
     backgroundColor: '#1A1A2E', borderRadius: 10, padding: 14,
     color: '#fff', fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
