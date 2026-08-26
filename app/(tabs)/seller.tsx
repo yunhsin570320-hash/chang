@@ -385,8 +385,9 @@ export default function SellerPage() {
       if (error || data?.error) throw error || new Error(data?.error);
       setRelistTarget(null);
       fetchProducts();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error relisting:', error);
+      Alert.alert('重新上架失敗', typeof error?.message === 'string' ? error.message : '請稍後再試');
     } finally {
       setRelistSubmitting(false);
     }
@@ -552,7 +553,7 @@ export default function SellerPage() {
       && p.delivery_status !== 'completed'
       && !p.is_archived
   );
-  const unsoldProducts = endedProducts.filter(p => !p.winning_amount);
+  const unsoldProducts = endedProducts.filter(p => !p.is_direct_buy && !p.winning_amount);
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
