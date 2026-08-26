@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Modal,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Clock, Users, ShoppingBag, Trophy, EyeOff, X, Crown, RotateCcw, Trash2, Truck, Tag, ShoppingCart, Package, Check, Minus, Plus, Flag, Share2, Link as LinkIcon, Truck as TruckIcon } from 'lucide-react-native';
@@ -262,25 +263,20 @@ export default function ProductDetail() {
     if (!product || !user || user.id !== product.seller_id) return;
     setEndAuctionModalVisible(false);
     try {
+      const { data, error } = await callRpc('rpc_seller_end_auction', {
+        p_token: sessionToken,
+        p_product_id: id as string,
+      });
+      if (error || data?.error) throw error || new Error(data?.error);
+
       const { data: allBids } = await supabase
         .from('bids')
         .select('*, bidder:profiles!bidder_id(name, id)')
         .eq('product_id', id)
         .order('amount', { ascending: false });
 
-      const winningBid = allBids?.[0];
-      const winnerId = winningBid?.bidder_id ?? null;
-      const winningAmount = winningBid?.amount ?? null;
-
-      await supabase
-        .from('products')
-        .update({
-          status: 'ended',
-          winner_id: winnerId,
-          winning_amount: winningAmount,
-        })
-        .eq('id', id);
-
+      const winnerId = data?.winner_id ?? null;
+      const winningAmount = data?.winning_amount ?? null;
       const bidderIds = (allBids || []).map(b => b.bidder_id).filter(Boolean);
       if (bidderIds.length > 0 && product) {
         await sendAuctionNotifications(id as string, product.name, winnerId || null, winningAmount || null, bidderIds);
@@ -288,8 +284,9 @@ export default function ProductDetail() {
 
       fetchData();
       setResultModalVisible(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error ending auction:', error);
+      Alert.alert('結標失敗', typeof error?.message === 'string' ? error.message : '請稍後再試');
     }
   };
 
@@ -301,16 +298,17 @@ export default function ProductDetail() {
     try {
       const endTime = new Date();
       endTime.setMinutes(endTime.getMinutes() + minutes);
-      await supabase.from('products').update({
-        status: 'active',
-        end_time: endTime.toISOString(),
-        winner_id: null,
-        winning_amount: null,
-      }).eq('id', id);
+      const { data, error } = await callRpc('rpc_seller_relist_product', {
+        p_token: sessionToken,
+        p_product_id: id as string,
+        p_end_time: endTime.toISOString(),
+      });
+      if (error || data?.error) throw error || new Error(data?.error);
       setRelistModalVisible(false);
       fetchData();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      Alert.alert('重新上架失敗', typeof e?.message === 'string' ? e.message : '請稍後再試');
     } finally {
       setRelistSubmitting(false);
     }
