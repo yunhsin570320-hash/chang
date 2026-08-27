@@ -49,7 +49,7 @@ export default function ProductDetail() {
   const [myReport, setMyReport] = useState<any>(null);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
-  const { user, currentRole, sessionToken } = useAuth();
+  const { user, currentRole, sessionToken, refreshUser } = useAuth();
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -125,8 +125,9 @@ export default function ProductDetail() {
   }, [id, user]);
 
   useEffect(() => {
+    refreshUser();
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, refreshUser]);
 
   const handleDirectBuy = async () => {
     if (!user || !product) return;
