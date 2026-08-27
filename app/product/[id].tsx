@@ -245,7 +245,7 @@ export default function ProductDetail() {
       });
 
       if (error) {
-        setBidError('競標失敗，請稍後再試');
+        setBidError(error.message || '競標失敗，請稍後再試');
         return;
       }
       if (data?.error) {
