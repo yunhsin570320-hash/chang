@@ -116,6 +116,9 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_admin_review_payment_request",
   "rpc_get_site_settings",
   "rpc_admin_update_site_setting",
+  "rpc_get_bid_counts",
+  "rpc_get_my_bids",
+  "rpc_get_my_bid_for_product",
 ]);
 
 Deno.serve(async (req: Request) => {

@@ -85,13 +85,11 @@ export default function ProductDetail() {
         return;
       }
 
-      if (user) {
-        const { data: myBidData } = await supabase
-          .from('bids')
-          .select('*')
-          .eq('product_id', id)
-          .eq('bidder_id', user.id)
-          .maybeSingle();
+      if (user && sessionToken) {
+        const { data: myBidData } = await callRpc<Bid>('rpc_get_my_bid_for_product', {
+          p_token: sessionToken,
+          p_product_id: id as string,
+        });
         setMyBid(myBidData);
 
         const { data: myReportData } = await supabase
@@ -103,11 +101,9 @@ export default function ProductDetail() {
         setMyReport(myReportData);
       }
 
-      const { count } = await supabase
-        .from('bids')
-        .select('*', { count: 'exact', head: true })
-        .eq('product_id', id);
-      setBidCount(count || 0);
+      const { data: countData } = await callRpc<{ product_id: string; count: number }[]>('rpc_get_bid_counts');
+      const matching = (countData || []).find(row => row.product_id === id);
+      setBidCount(matching?.count || 0);
 
       if (productData?.status === 'ended') {
         const { data: allBids } = await supabase
@@ -122,7 +118,7 @@ export default function ProductDetail() {
     } finally {
       setLoading(false);
     }
-  }, [id, user]);
+  }, [id, user, sessionToken]);
 
   useEffect(() => {
     refreshUser();

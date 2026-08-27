@@ -1,0 +1,17 @@
+[functions.rpc-proxy]
+verify_jwt = false
+
+[functions.ecpay]
+verify_jwt = false
+
+[functions.product-image]
+verify_jwt = false
+
+[functions.payment-proof]
+verify_jwt = false
+
+[functions.send-sms-otp]
+verify_jwt = false
+
+[functions.migrate-product-images]
+verify_jwt = false

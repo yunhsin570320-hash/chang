@@ -95,12 +95,7 @@ export default function ProfilePage() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const [bidsResult, notifResult, paymentResult, settingsResult, statsResult] = await Promise.all([
-        supabase
-          .from('bids')
-          .select('*, product:products(id, name, status, end_time, winner_id, winning_amount, image_url)')
-          .eq('bidder_id', user.id)
-          .order('created_at', { ascending: false }),
+      const [notifResult, paymentResult, settingsResult, statsResult, myBidsResult] = await Promise.all([
         supabase
           .from('notifications')
           .select('*')
@@ -114,8 +109,9 @@ export default function ProfilePage() {
           .order('created_at', { ascending: false }),
         callRpc('rpc_get_site_settings').then(({ data }) => data?.settings as Record<string, string> || {}),
         getMemberStats(),
+        callRpc<BidWithProduct[]>('rpc_get_my_bids', { p_token: sessionToken }),
       ]);
-      setMyBids(bidsResult.data || []);
+      setMyBids(myBidsResult.data || []);
       setNotifications(notifResult.data || []);
       setPaymentRequests((paymentResult.data || []) as PaymentRequest[]);
       if (settingsResult) {
@@ -127,7 +123,7 @@ export default function ProfilePage() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, sessionToken]);
 
   useFocusEffect(
     useCallback(() => {
