@@ -222,8 +222,9 @@ export default function ProductDetail() {
       return;
     }
 
-    const amount = parseInt(bidAmount, 10);
-    if (isNaN(amount) || amount <= 0) {
+    const normalizedBidAmount = bidAmount.replace(/[^0-9]/g, '');
+    const amount = Number(normalizedBidAmount);
+    if (!Number.isInteger(amount) || amount <= 0) {
       setBidError('請輸入有效的出價金額');
       return;
     }
@@ -252,6 +253,14 @@ export default function ProductDetail() {
         return;
       }
 
+      setMyBid({
+        id: `local-${Date.now()}`,
+        product_id: id,
+        bidder_id: user.id,
+        amount,
+        created_at: new Date().toISOString(),
+      });
+      setBidCount((current) => current + 1);
       setBidAmount('');
       await fetchData();
     } catch {
