@@ -252,7 +252,8 @@ export default function ProductDetail() {
         return;
       }
 
-      fetchData();
+      setBidAmount('');
+      await fetchData();
     } catch {
       setBidError('競標失敗，請稍後再試');
     } finally {
