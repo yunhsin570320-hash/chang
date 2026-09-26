@@ -76,186 +76,53 @@ export default function SellerPage() {
     }, [user, currentRole])
   );
 
-  const fetchArchivedRecords = async (sellerId: string) => {
-    const { data: archivedProducts } = await supabase
-      .from('products')
-      .select('id, name')
-      .eq('seller_id', sellerId)
-      .eq('is_archived', true);
-
-    if ((archivedProducts || []).length === 0) {
+  const fetchArchivedRecords = async () => {
+    if (!sessionToken) return;
+    const { data, error } = await callRpc<ArchivedRecord[]>('rpc_get_seller_archived_deliveries', {
+      p_token: sessionToken,
+    });
+    if (error || data?.error) {
       setArchivedRecords([]);
       return;
     }
-
-    const archivedIds = (archivedProducts || []).map(p => p.id);
-    const { data: deliveries } = await supabase
-      .from('deliveries')
-      .select('id, product_id, completed_summary, completed_at')
-      .in('product_id', archivedIds)
-      .eq('status', 'completed')
-      .order('completed_at', { ascending: false });
-
-    const nameMap: Record<string, string> = {};
-    (archivedProducts || []).forEach(p => { nameMap[p.id] = p.name; });
-
-    // For archived products without a delivery record, still show them
-    const deliveredIds = new Set((deliveries || []).map(d => d.product_id));
-    const missingDelivery = (archivedProducts || [])
-      .filter(p => !deliveredIds.has(p.id))
-      .map(p => ({
-        id: `no-delivery-${p.id}`,
-        product_id: p.id,
-        completed_summary: `【${p.name}】\n（交付記錄已封存）`,
-        completed_at: '',
-        product_name: p.name,
-      }));
-
-    setArchivedRecords([
-      ...(deliveries || []).map(d => ({
-        id: d.id,
-        product_id: d.product_id,
-        completed_summary: d.completed_summary || `【${nameMap[d.product_id] || '商品'}】\n（交付已完成）`,
-        completed_at: d.completed_at || '',
-        product_name: nameMap[d.product_id] || '未知商品',
-      })),
-      ...missingDelivery,
-    ]);
+    setArchivedRecords(data || []);
   };
 
   const fetchProducts = async () => {
-    if (!user) return;
+    if (!user || !sessionToken) return;
     try {
-      const { data: productData } = await supabase
-        .from('products')
-        .select('id, name, status, end_time, winner_id, winning_amount, seller_id, created_at, is_archived, reserve_price, is_direct_buy, direct_price, stock_quantity, shipping_fee, image_url')
-        .eq('seller_id', user.id)
-        .eq('is_archived', false)
-        .order('created_at', { ascending: false });
-
-      const productIds = (productData || []).map(p => p.id);
-      const { data: bidCounts } = await supabase
-        .from('bids')
-        .select('product_id')
-        .in('product_id', productIds.length > 0 ? productIds : ['00000000-0000-0000-0000-000000000000']);
-
-      const bidCountMap = new Map<string, number>();
-      (bidCounts || []).forEach((b) => {
-        const count = bidCountMap.get(b.product_id) || 0;
-        bidCountMap.set(b.product_id, count + 1);
+      const { data, error } = await callRpc<ProductWithCount[]>('rpc_get_seller_product_overview', {
+        p_token: sessionToken,
+        p_archived: false,
       });
-
-      const winnerIds = (productData || []).filter(p => p.winner_id).map(p => p.winner_id);
-      let winnerMap: Record<string, string> = {};
-
-      if (winnerIds.length > 0) {
-        const { data: winners } = await supabase
-          .from('profiles')
-          .select('id, name')
-          .in('id', winnerIds as string[]);
-
-        (winners || []).forEach((w) => {
-          winnerMap[w.id] = w.name;
-        });
+      if (error || data?.error) {
+        console.warn('Seller fetchProducts error:', error || data?.error);
+        return;
       }
 
-      // Fetch delivery status and ID for ended auction products with a winner
-      const endedWithWinnerIds = (productData || [])
-        .filter(p => p.status === 'ended' && p.winner_id && !p.is_direct_buy)
-        .map(p => p.id);
-
-      const deliveryStatusMap = new Map<string, string>();
-      const deliveryIdMap = new Map<string, string>();
-      const completedProductIds = new Set<string>();
-
-      if (endedWithWinnerIds.length > 0) {
-        const { data: deliveryRows } = await supabase
-          .from('deliveries')
-          .select('id, product_id, status')
-          .in('product_id', endedWithWinnerIds)
-          .eq('is_direct_buy', false);
-
-        (deliveryRows || []).forEach(d => {
-          deliveryStatusMap.set(d.product_id, d.status);
-          deliveryIdMap.set(d.product_id, d.id);
-          if (d.status === 'completed') {
-            completedProductIds.add(d.product_id);
-          }
-        });
-      }
-
-      // Fetch pending direct buy deliveries (one per purchase, may be many per product)
-      const directBuyIds = (productData || [])
-        .filter(p => p.is_direct_buy && !p.is_archived)
-        .map(p => p.id);
-
-      const pendingDeliveryIdMap = new Map<string, string>();
-      const pendingDeliveryCountMap = new Map<string, number>();
-
-      if (directBuyIds.length > 0) {
-        const { data: pendingDeliveries } = await supabase
-          .from('deliveries')
-          .select('id, product_id, status, created_at')
-          .in('product_id', directBuyIds)
-          .in('status', ['pending', 'shipped', 'delivered'])
-          .order('created_at', { ascending: true });
-
-        (pendingDeliveries || []).forEach(d => {
-          if (!pendingDeliveryIdMap.has(d.product_id)) {
-            pendingDeliveryIdMap.set(d.product_id, d.id);
-          }
-          pendingDeliveryCountMap.set(d.product_id, (pendingDeliveryCountMap.get(d.product_id) || 0) + 1);
-        });
-      }
+      const productData = data || [];
 
       // Auto-archive any products whose delivery is completed but not yet archived
-      if (completedProductIds.size > 0) {
-        const toArchive = [...completedProductIds].filter(pid => {
-          const p = (productData || []).find(x => x.id === pid);
-          return p && !p.is_archived;
+      const toArchive = productData
+        .filter(p => p.delivery_status === 'completed' && !p.is_archived)
+        .map(p => p.id);
+
+      if (toArchive.length > 0) {
+        await callRpc('rpc_seller_archive_products', {
+          p_token: sessionToken,
+          p_product_ids: toArchive,
         });
-        if (toArchive.length > 0) {
-          await callRpc('rpc_seller_archive_products', {
-            p_token: sessionToken,
-            p_product_ids: toArchive,
-          });
-          // Re-fetch to get updated is_archived flags
-          const { data: refreshed } = await supabase
-            .from('products')
-            .select('id, name, status, end_time, winner_id, winning_amount, seller_id, created_at, is_archived, reserve_price, is_direct_buy, direct_price, stock_quantity, image_url')
-            .eq('seller_id', user.id)
-            .eq('is_archived', false)
-            .order('created_at', { ascending: false });
-          // Use refreshed data from here
-          const productsWithBids = (refreshed || []).map((p) => ({
-            ...p,
-            bid_count: bidCountMap.get(p.id) || 0,
-            winner_name: p.winner_id ? winnerMap[p.winner_id] : undefined,
-            delivery_status: deliveryStatusMap.get(p.id) ?? null,
-            delivery_id: deliveryIdMap.get(p.id) ?? null,
-            pending_delivery_id: pendingDeliveryIdMap.get(p.id) ?? null,
-            pending_delivery_count: pendingDeliveryCountMap.get(p.id) ?? 0,
-          }));
-          setProducts(productsWithBids);
-          // Skip the normal setProducts below by jumping to archive fetch
-          await fetchArchivedRecords(user.id);
-          return;
-        }
+        // Re-fetch after archiving
+        const { data: refreshed } = await callRpc<ProductWithCount[]>('rpc_get_seller_product_overview', {
+          p_token: sessionToken,
+          p_archived: false,
+        });
+        setProducts(refreshed || []);
+      } else {
+        setProducts(productData);
       }
 
-      const productsWithBids = (productData || []).map((p) => ({
-        ...p,
-        bid_count: bidCountMap.get(p.id) || 0,
-        winner_name: p.winner_id ? winnerMap[p.winner_id] : undefined,
-        delivery_status: deliveryStatusMap.get(p.id) ?? null,
-        delivery_id: deliveryIdMap.get(p.id) ?? null,
-        pending_delivery_id: pendingDeliveryIdMap.get(p.id) ?? null,
-        pending_delivery_count: pendingDeliveryCountMap.get(p.id) ?? 0,
-      }));
-
-      setProducts(productsWithBids);
-
-      await fetchArchivedRecords(user.id);
+      await fetchArchivedRecords();
     } catch (error) {
       console.warn('Seller fetchProducts error:', error);
     } finally {
@@ -422,18 +289,20 @@ export default function SellerPage() {
       return;
     }
 
-    // Always query DB first — in-memory state can be stale after repeated clicks
-    const { data: existingDelivery } = await supabase
-      .from('deliveries')
-      .select('id')
-      .eq('product_id', product.id)
-      .eq('is_direct_buy', false)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Check for existing delivery via RPC
+    if (product.delivery_id) {
+      router.push({ pathname: '/delivery/[id]' as any, params: { id: product.delivery_id } });
+      return;
+    }
 
-    if (existingDelivery) {
-      router.push({ pathname: '/delivery/[id]' as any, params: { id: existingDelivery.id } });
+    // Fallback: query seller deliveries via RPC
+    const { data: delivData } = await callRpc<Array<{ id: string; status: string; product_id: string; is_direct_buy: boolean }>>('rpc_get_seller_deliveries', {
+      p_token: sessionToken,
+      p_product_ids: [product.id],
+    });
+    const existing = (delivData || []).find(d => d.is_direct_buy === false);
+    if (existing) {
+      router.push({ pathname: '/delivery/[id]' as any, params: { id: existing.id } });
       return;
     }
 

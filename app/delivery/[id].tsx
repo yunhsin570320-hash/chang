@@ -56,63 +56,48 @@ export default function DeliveryPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (id) fetchDeliveryData();
-  }, [id]);
+    if (id && sessionToken) fetchDeliveryData();
+  }, [id, sessionToken]);
 
   const fetchDeliveryData = async () => {
+    if (!sessionToken) {
+      setErrorMsg('登入已過期，請重新登入');
+      setLoading(false);
+      return;
+    }
     try {
-      const { data: deliveryData, error: deliveryError } = await supabase
-        .from('deliveries')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      const { data, error } = await callRpc<{
+        delivery: DeliveryInfo;
+        product: Product;
+        buyer: Profile;
+        error?: string;
+      }>('rpc_get_delivery_detail', {
+        p_token: sessionToken,
+        p_delivery_id: id as string,
+      });
 
-      if (deliveryError) {
-        console.error('delivery load failed', deliveryError);
-        setErrorMsg('無法載入交付資料，請稍後再試');
+      if (error) {
+        setErrorMsg(error.message || '無法載入交付資料，請稍後再試');
         setLoading(false);
         return;
       }
-      if (!deliveryData) {
+      if (data?.error) {
+        setErrorMsg(data.error);
+        setLoading(false);
+        return;
+      }
+      if (!data?.delivery) {
         setErrorMsg('找不到此交付記錄');
         setLoading(false);
         return;
       }
 
-      setDelivery(deliveryData as DeliveryInfo);
+      const deliveryData = data.delivery as DeliveryInfo;
+      setDelivery(deliveryData);
       setTrackingNumber(deliveryData.tracking_number || '');
       setNotes(deliveryData.notes || '');
-
-      const [productResult, buyerResult] = await Promise.all([
-        supabase.from('products').select('*').eq('id', deliveryData.product_id).maybeSingle(),
-        supabase.from('profiles').select('*').eq('id', deliveryData.winner_id).maybeSingle(),
-      ]);
-
-      if (productResult.error) {
-        console.error('product load failed', productResult.error);
-        setErrorMsg('無法載入商品資料，請稍後再試');
-        setLoading(false);
-        return;
-      }
-      if (!productResult.data) {
-        setErrorMsg('找不到商品資料');
-        setLoading(false);
-        return;
-      }
-      if (buyerResult.error) {
-        console.error('buyer load failed', buyerResult.error);
-        setErrorMsg('無法載入買家資料，請稍後再試');
-        setLoading(false);
-        return;
-      }
-      if (!buyerResult.data) {
-        setErrorMsg('找不到買家資料');
-        setLoading(false);
-        return;
-      }
-
-      setProduct(productResult.data);
-      setBuyer(buyerResult.data);
+      setProduct(data.product || null);
+      setBuyer(data.buyer || null);
     } catch (error: any) {
       console.error('delivery data load failed', error);
       setErrorMsg('載入失敗，請稍後再試');
