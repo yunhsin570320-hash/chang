@@ -55,18 +55,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkSession = async () => {
     try {
-      let storedUser: string | null = null;
       let storedRole: string | null = null;
       let storedToken: string | null = null;
       try {
-        storedUser = await AsyncStorage.getItem('auction_user');
         storedRole = await AsyncStorage.getItem('auction_role');
         storedToken = await AsyncStorage.getItem('auction_session_token');
       } catch {}
 
-      if (storedUser && storedToken) {
-        const parsedUser = JSON.parse(storedUser) as Profile;
-
+      if (storedToken) {
         const { data: validatedUser } = await callRpc('rpc_validate_session', { p_token: storedToken });
         if (validatedUser) {
           setUser(validatedUser as Profile);
@@ -76,30 +72,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else {
             setCurrentRole((validatedUser as Profile).is_seller ? 'seller' : 'buyer');
           }
-          AsyncStorage.setItem('auction_user', JSON.stringify(validatedUser)).catch(() => {});
         } else {
-          // Token expired — clear session, require re-login
-          AsyncStorage.removeItem('auction_user').catch(() => {});
           AsyncStorage.removeItem('auction_role').catch(() => {});
           AsyncStorage.removeItem('auction_session_token').catch(() => {});
-          // Keep parsedUser to avoid flash but don't set token — they'll be redirected
-          setUser(parsedUser);
-          setCurrentRole(parsedUser.is_seller ? 'seller' : 'buyer');
         }
         setIsLoading(false);
       } else {
-        // No user or no token — clear any stale storage
-        if (storedUser || storedToken) {
-          AsyncStorage.removeItem('auction_user').catch(() => {});
+        if (storedRole) {
           AsyncStorage.removeItem('auction_role').catch(() => {});
-          AsyncStorage.removeItem('auction_session_token').catch(() => {});
         }
         setIsLoading(false);
       }
     } catch (error) {
       console.error('Session check error:', error);
       try {
-        await AsyncStorage.removeItem('auction_user');
         await AsyncStorage.removeItem('auction_role');
         await AsyncStorage.removeItem('auction_session_token');
       } catch {}
@@ -113,7 +99,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: freshUser } = await callRpc('rpc_validate_session', { p_token: sessionToken });
       if (freshUser) {
         setUser(freshUser as Profile);
-        AsyncStorage.setItem('auction_user', JSON.stringify(freshUser)).catch(() => {});
       }
     } catch {}
   }, [user, sessionToken]);
@@ -139,7 +124,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSessionToken(token);
 
       try {
-        await AsyncStorage.setItem('auction_user', JSON.stringify(matchedUser));
         await AsyncStorage.setItem('auction_role', defaultRole);
         await AsyncStorage.setItem('auction_session_token', token);
       } catch {}
@@ -186,7 +170,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSessionToken(token);
 
       try {
-        await AsyncStorage.setItem('auction_user', JSON.stringify(newUser));
         await AsyncStorage.setItem('auction_role', defaultRole);
         await AsyncStorage.setItem('auction_session_token', token);
       } catch {}
@@ -206,7 +189,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setCurrentRole('buyer');
     setSessionToken(null);
-    AsyncStorage.removeItem('auction_user').catch(() => {});
     AsyncStorage.removeItem('auction_role').catch(() => {});
     AsyncStorage.removeItem('auction_session_token').catch(() => {});
   }, [sessionToken]);
