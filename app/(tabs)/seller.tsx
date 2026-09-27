@@ -284,29 +284,38 @@ export default function SellerPage() {
   };
 
   const handleDelivery = async (product: ProductWithCount) => {
-    if (!product.winner_id) {
+    if (!product.winner_id && !product.is_direct_buy) {
       Alert.alert('提示', '此商品尚無得標者');
       return;
     }
 
-    // Check for existing delivery via RPC
-    if (product.delivery_id) {
-      router.push({ pathname: '/delivery/[id]' as any, params: { id: product.delivery_id } });
-      return;
-    }
+    const isDirectBuy = !!product.is_direct_buy;
 
-    // Fallback: query seller deliveries via RPC
-    const { data: delivData } = await callRpc<Array<{ id: string; status: string; product_id: string; is_direct_buy: boolean }>>('rpc_get_seller_deliveries', {
+    // Check for existing delivery via RPC (handles both auction + direct buy)
+    const { data: delivData } = await callRpc<{ id: string; status: string; product_id: string; is_direct_buy: boolean; found?: boolean; error?: string }>('rpc_seller_get_delivery_by_product', {
       p_token: sessionToken,
-      p_product_ids: [product.id],
+      p_product_id: product.id,
+      p_is_direct_buy: isDirectBuy,
     });
-    const existing = (delivData || []).find(d => d.is_direct_buy === false);
-    if (existing) {
-      router.push({ pathname: '/delivery/[id]' as any, params: { id: existing.id } });
+
+    if (delivData?.error) {
+      Alert.alert('錯誤', delivData.error);
       return;
     }
 
-    // Create new delivery record for this auction
+    if (delivData?.id) {
+      router.push({ pathname: '/delivery/[id]' as any, params: { id: delivData.id } });
+      return;
+    }
+
+    // For direct buy: delivery is already created by rpc_direct_buy.
+    // If not found, it means no one has purchased yet.
+    if (isDirectBuy) {
+      Alert.alert('提示', '尚無直購訂單');
+      return;
+    }
+
+    // For auction: create delivery record if none exists
     const { data: rpcResult, error } = await callRpc('rpc_seller_create_delivery', {
       p_token: sessionToken,
       p_product_id: product.id,

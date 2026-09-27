@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Clock, Users, ShoppingBag, Trophy, Wifi } from 'lucide-react-native';
-import { supabase, Product, getMemberStats, MemberStats, callRpc } from '../../lib/supabase';
+import { Product, getMemberStats, MemberStats, callRpc } from '../../lib/supabase';
 import { CountdownTimer } from '../../components/CountdownTimer';
 
 interface ProductWithBids extends Product {
@@ -40,30 +40,14 @@ export default function ProductHall() {
   const fetchProducts = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [productsResp, bidCountsResp, statsResp] = await Promise.all([
-        supabase
-          .from('products')
-          .select('id, name, status, end_time, winner_id, winning_amount, seller_id, created_at, image_url, seller:profiles!seller_id(id, name)')
-          .eq('is_approved', true)
-          .or('is_direct_buy.is.false,is_direct_buy.is.null')
-          .order('created_at', { ascending: false }),
-        callRpc<{ product_id: string; count: number }[]>('rpc_get_bid_counts'),
+      const [productsResp, statsResp] = await Promise.all([
+        callRpc<ProductWithBids[]>('rpc_get_auction_products', {}),
         getMemberStats(),
       ]);
 
       if (productsResp.error) throw productsResp.error;
 
-      const bidCounts = new Map<string, number>();
-      (bidCountsResp.data || []).forEach((row: { product_id: string; count: number }) => {
-        bidCounts.set(row.product_id, row.count);
-      });
-
-      setProducts(
-        (productsResp.data || []).map((p: any) => ({
-          ...p,
-          bid_count: bidCounts.get(p.id) || 0,
-        }))
-      );
+      setProducts(productsResp.data || []);
       if (statsResp) setMemberStats(statsResp);
       if (!silent) setFetchError(null);
       hasLoadedRef.current = true;

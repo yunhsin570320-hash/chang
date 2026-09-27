@@ -16,7 +16,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { ShoppingCart, Tag, Users, Check, X, ShoppingBag, Minus, Plus } from 'lucide-react-native';
-import { supabase, callRpc, Product } from '../../lib/supabase';
+import { callRpc, Product } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 type DirectProduct = Product;
@@ -45,15 +45,9 @@ export default function DirectHall() {
   const fetchProducts = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name, status, direct_price, stock_quantity, seller_id, winner_id, winning_amount, created_at, image_url, seller:profiles!seller_id(id, name), winner:profiles!winner_id(id, name)')
-        .eq('is_approved', true)
-        .eq('is_direct_buy', true)
-        .order('created_at', { ascending: false });
-
+      const { data, error } = await callRpc<DirectProduct[]>('rpc_get_direct_products', {});
       if (error) throw error;
-      setProducts((data || []) as any);
+      setProducts(data || []);
       hasLoadedRef.current = true;
     } catch (err) {
       if (!silent) console.warn('fetchDirectProducts error:', err);
@@ -130,8 +124,16 @@ export default function DirectHall() {
         throw new Error(error?.message || data?.error || '購買失敗');
       }
 
+      const deliveryId = data?.delivery_id;
       setBuySuccess(true);
       fetchProducts();
+
+      if (deliveryId) {
+        setTimeout(() => {
+          closeModal();
+          router.push({ pathname: '/delivery/[id]' as any, params: { id: deliveryId } });
+        }, 1500);
+      }
     } catch (err: any) {
       setBuyError(err?.message || '購買失敗，商品可能已售出，請重新整理');
       console.warn(err);
