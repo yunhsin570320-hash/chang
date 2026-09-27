@@ -9,7 +9,6 @@ import {
   RotateCcw, MessageSquare, Clock, TrendingUp, DollarSign, ImageIcon,
   Wifi, Crown,
 } from 'lucide-react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import {
   supabase, callRpc, Profile, Report, Product, PaymentRequest, getPaymentProofUrl,
   getAdminDashboard, getAdminMembers, getAdminReports, getAdminComplaints,
@@ -17,7 +16,7 @@ import {
   AdminMember, AdminReport, AdminComplaint, AdminPaymentRequest, AdminActionLogEntry,
 } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 
 type AdminTab = 'dashboard' | 'members' | 'paid' | 'lifetime' | 'products' | 'reports' | 'complaints' | 'payments' | 'settings' | 'actions';
 

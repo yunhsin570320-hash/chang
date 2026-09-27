@@ -13,8 +13,7 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { ShoppingCart, Tag, Users, Check, X, ShoppingBag, Minus, Plus } from 'lucide-react-native';
 import { callRpc, Product } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';

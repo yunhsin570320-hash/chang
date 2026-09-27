@@ -10,8 +10,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Clock, Users, ShoppingBag, Trophy, Wifi } from 'lucide-react-native';
 import { Product, getMemberStats, MemberStats, callRpc } from '../../lib/supabase';
 import { CountdownTimer } from '../../components/CountdownTimer';

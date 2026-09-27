@@ -17,8 +17,7 @@ import { supabase, callRpc, Product, uploadProductImage } from '../../lib/supaba
 import { useAuth } from '../../contexts/AuthContext';
 import { CountdownTimer } from '../../components/CountdownTimer';
 import { WebCamera } from '../../components/WebCamera';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
 interface ProductWithCount extends Product {

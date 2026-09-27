@@ -23,8 +23,8 @@ import QRCode from 'react-native-qrcode-svg';
 import { supabase, callRpc, Bid, Product, Notification, uploadPaymentProof, sendPhoneOtp, PaymentRequest, getMemberStats, MemberStats } from '../../lib/supabase';
 import { WebCamera } from '../../components/WebCamera';
 import { useAuth } from '../../contexts/AuthContext';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useFocusEffect } from 'expo-router';
+
 
 interface BidWithProduct extends Bid {
   product?: Product;
