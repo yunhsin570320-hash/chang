@@ -111,8 +111,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         p_password_plain: password,
       });
 
-      if (rpcError) return { error: '登入失敗，請稍後再試' };
+      if (rpcError) return { error: rpcError.message };
       if (data?.error) return { error: data.error };
+      if (!data?.user || !data?.token) return { error: '登入服務回應異常，請重新嘗試' };
 
       const matchedUser = data.user as Profile;
       const token = data.token as string;
