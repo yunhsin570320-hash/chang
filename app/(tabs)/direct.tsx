@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   imageContainer: { position: 'relative', overflow: 'hidden' },
   image: { width: '100%', height: '100%', objectFit: 'cover' } as any,
   soldOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center', alignItems: 'center',
   },

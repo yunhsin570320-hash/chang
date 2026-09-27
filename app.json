@@ -25,7 +25,9 @@
         {
           "cameraPermission": "允許此應用程式使用相機拍攝商品照片"
         }
-      ]
+      ],
+      "expo-splash-screen",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true
