@@ -129,6 +129,10 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_get_auction_products",
   "rpc_get_direct_products",
   "rpc_seller_get_delivery_by_product",
+  "rpc_start_chat_thread",
+  "rpc_get_chat_threads",
+  "rpc_get_chat_messages",
+  "rpc_save_chat_message",
 ]);
 
 Deno.serve(async (req: Request) => {

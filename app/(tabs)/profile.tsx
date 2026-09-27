@@ -17,7 +17,7 @@ import {
 import {
   User, Package, Crown, Bell, BellOff, Phone, CreditCard,
   MapPin, Building2, Edit3, Check, X, ChevronRight, Trophy, ShieldCheck, ShieldAlert,
-  Lock, Unlock, AlertCircle, Zap, Camera, Upload, Clock, ScrollText, Users,
+  Lock, Unlock, AlertCircle, Zap, Camera, Upload, Clock, ScrollText, Users, Bot,
 } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { supabase, callRpc, Bid, Product, Notification, uploadPaymentProof, sendPhoneOtp, PaymentRequest, getMemberStats, MemberStats } from '../../lib/supabase';
@@ -374,13 +374,15 @@ export default function ProfilePage() {
 
   const renderNotification = ({ item }: { item: Notification }) => {
     const isWon = item.type === 'won';
+    const isAuctionEnded = item.type === 'auction_ended';
+    const isNewBid = item.type === 'new_bid';
     return (
       <TouchableOpacity
         style={[styles.notifCard, !item.is_read && styles.notifCardUnread]}
         onPress={() => { markRead(item.id); if (item.product_id) router.push(`/product/${item.product_id}`); }}
       >
-        <View style={[styles.notifIcon, { backgroundColor: isWon ? 'rgba(255,215,0,0.15)' : 'rgba(255,107,107,0.15)' }]}>
-          {isWon ? <Trophy size={20} color="#FFD700" /> : <BellOff size={20} color="#FF6B6B" />}
+        <View style={[styles.notifIcon, { backgroundColor: isWon ? 'rgba(255,215,0,0.15)' : isAuctionEnded || isNewBid ? 'rgba(0,212,170,0.15)' : 'rgba(255,107,107,0.15)' }]}>
+          {isWon ? <Trophy size={20} color="#FFD700" /> : isAuctionEnded || isNewBid ? <Bell size={20} color="#00D4AA" /> : <BellOff size={20} color="#FF6B6B" />}
         </View>
         <View style={styles.notifBody}>
           <View style={styles.notifTitleRow}>
@@ -690,6 +692,12 @@ export default function ProfilePage() {
           <TouchableOpacity style={styles.rulesButton} onPress={() => setRulesModalVisible(true)}>
             <ScrollText size={18} color="#00D4AA" />
             <Text style={styles.rulesButtonText}>使用規則與注意事項</Text>
+            <ChevronRight size={16} color="#555" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.chatButton} onPress={() => router.push('/chat')}>
+            <Bot size={18} color="#00D4AA" />
+            <Text style={styles.rulesButtonText}>AI 智能客服</Text>
             <ChevronRight size={16} color="#555" />
           </TouchableOpacity>
 
@@ -1458,6 +1466,12 @@ const styles = StyleSheet.create({
   rulesButton: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     margin: 16, marginTop: 8, padding: 16, borderRadius: 12,
+    backgroundColor: 'rgba(0,212,170,0.08)',
+    borderWidth: 1, borderColor: 'rgba(0,212,170,0.2)',
+  },
+  chatButton: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 16, marginBottom: 12, padding: 16, borderRadius: 12,
     backgroundColor: 'rgba(0,212,170,0.08)',
     borderWidth: 1, borderColor: 'rgba(0,212,170,0.2)',
   },

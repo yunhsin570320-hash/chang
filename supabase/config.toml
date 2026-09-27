@@ -15,3 +15,6 @@ verify_jwt = false
 
 [functions.migrate-product-images]
 verify_jwt = false
+
+[functions.ai-chat]
+verify_jwt = false

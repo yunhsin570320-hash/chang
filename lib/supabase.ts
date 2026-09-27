@@ -156,6 +156,46 @@ export type MemberStats = {
   lifetime_members: number;
 };
 
+export type ChatThread = {
+  id: string;
+  subject?: string | null;
+  created_at: string;
+  last_message_at: string;
+  last_message?: string | null;
+};
+
+export type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+};
+
+export async function sendChatMessage(
+  sessionToken: string,
+  threadId: string,
+  message: string
+): Promise<{ reply?: string; error?: string }> {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ sessionToken, threadId, message }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { error: body?.error || '訊息發送失敗，請稍後再試' };
+    }
+    return { reply: body.reply };
+  } catch {
+    return { error: '網路連線失敗，請稍後再試' };
+  }
+}
+
 export async function getMemberStats(): Promise<MemberStats | null> {
   const { data } = await callRpc<MemberStats>('rpc_get_member_stats');
   return data;
