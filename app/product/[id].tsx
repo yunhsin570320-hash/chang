@@ -14,7 +14,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Clock, Users, ShoppingBag, Trophy, EyeOff, X, Crown, RotateCcw, Trash2, Truck, Tag, ShoppingCart, Package, Check, Minus, Plus, Flag, Share2, Link as LinkIcon, Truck as TruckIcon } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { supabase, callRpc, Product, Bid, Profile, sendAuctionNotifications } from '../../lib/supabase';
+import { supabase, callRpc, Product, Bid, Profile } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { CountdownTimer } from '../../components/CountdownTimer';
 
@@ -55,70 +55,45 @@ export default function ProductDetail() {
     if (!id) return;
 
     try {
-      const { data: productData } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', id)
-        .single();
+      const { data: detail, error } = await callRpc<{
+        product: Product;
+        seller: Profile | null;
+        winner_profile: Profile | null;
+        bid_count: number;
+        my_bid: Bid | null;
+        my_report: { id: string } | null;
+        error?: string;
+      }>('rpc_get_product_detail', {
+        p_token: sessionToken || '',
+        p_product_id: id as string,
+      });
 
-      setProduct(productData);
-
-      if (productData?.seller_id) {
-        const { data: sellerData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', productData.seller_id)
-          .single();
-        setSeller(sellerData);
-      }
-
-      // Direct buy products: fetch winner profile, skip bids
-      if (productData?.is_direct_buy) {
-        if (productData?.winner_id && productData?.status === 'ended') {
-          const { data: wp } = await supabase
-            .from('profiles')
-            .select('id, name')
-            .eq('id', productData.winner_id)
-            .maybeSingle();
-          setWinnerProfile(wp as Profile | null);
-        }
+      if (error || !detail || detail.error) {
+        console.error('Error fetching product:', error || detail?.error);
         return;
       }
 
-      if (user && sessionToken) {
-        const { data: myBidData } = await callRpc<Bid>('rpc_get_my_bid_for_product', {
+      const productData = detail.product;
+      setProduct(productData);
+      setSeller(detail.seller);
+      setWinnerProfile(detail.winner_profile);
+      setBidCount(detail.bid_count || 0);
+      setMyBid(detail.my_bid || null);
+      setMyReport(detail.my_report || null);
+
+      if (productData?.status === 'ended' && !productData?.is_direct_buy && sessionToken) {
+        const { data: allBids } = await callRpc<(Bid & { bidder?: Profile })[]>('rpc_get_ended_auction_bids', {
           p_token: sessionToken,
           p_product_id: id as string,
         });
-        setMyBid(myBidData);
-
-        const { data: myReportData } = await supabase
-          .from('reports')
-          .select('id')
-          .eq('product_id', id)
-          .eq('reporter_id', user.id)
-          .maybeSingle();
-        setMyReport(myReportData);
-      }
-
-      const { data: countData } = await callRpc<{ product_id: string; count: number }[]>('rpc_get_bid_counts');
-      const matching = (countData || []).find(row => row.product_id === id);
-      setBidCount(matching?.count || 0);
-
-      if (productData?.status === 'ended') {
-        const { data: allBids } = await supabase
-          .from('bids')
-          .select('*, bidder:profiles!bidder_id(name, id)')
-          .eq('product_id', id)
-          .order('amount', { ascending: false });
-        setBids(allBids || []);
+        setBids((allBids as (Bid & { bidder?: Profile })[]) || []);
       }
     } catch (error) {
       console.error('Error fetching product:', error);
     } finally {
       setLoading(false);
     }
-  }, [id, user, sessionToken]);
+  }, [id, sessionToken]);
 
   useEffect(() => {
     refreshUser();
@@ -135,64 +110,23 @@ export default function ProductDetail() {
     setDirectBuying(true);
     setDirectBuyError(null);
     try {
-      const totalAmount = (product.direct_price || 0) * qty;
-      const newStock = maxStock - qty;
-      const isSoldOut = newStock <= 0;
-
-      const { error } = await supabase
-        .from('products')
-        .update({
-          stock_quantity: newStock,
-          ...(isSoldOut ? { status: 'ended', winner_id: user.id, winning_amount: totalAmount } : {}),
-        })
-        .eq('id', id)
-        .eq('status', 'active');
+      const { data, error } = await callRpc<{ success: boolean; delivery_id: string; total_amount: number; error?: string }>('rpc_direct_buy', {
+        p_token: sessionToken,
+        p_product_id: id as string,
+        p_quantity: qty,
+      });
 
       if (error) throw error;
+      if (data?.error) { setDirectBuyError(data.error); return; }
 
-      // Create delivery record immediately for this purchase
-      const { data: newDelivery } = await supabase
-        .from('deliveries')
-        .insert({
-          product_id: id,
-          winner_id: user.id,
-          seller_id: product.seller_id,
-          status: 'pending',
-          quantity: qty,
-          purchase_amount: totalAmount,
-          is_direct_buy: true,
-        })
-        .select('id')
-        .single();
-
-      // Notify buyer
-      await supabase.from('notifications').insert({
-        user_id: user.id,
-        product_id: id,
-        type: 'won',
-        title: '直購成功！',
-        message: `您已成功購買「${product.name}」× ${qty} 件，金額 NT$ ${totalAmount.toLocaleString()}，請等候賣家聯繫交付事宜。`,
-        is_read: false,
-      });
-
-      // Notify seller to ship
-      await supabase.from('notifications').insert({
-        user_id: product.seller_id,
-        product_id: id,
-        type: 'new_bid',
-        title: '新訂單！請出貨',
-        message: `買家已直購「${product.name}」× ${qty} 件，金額 NT$ ${totalAmount.toLocaleString()}，請盡快安排出貨。`,
-        is_read: false,
-      });
-
-      if (newDelivery?.id) {
-        router.replace(`/delivery/${newDelivery.id}`);
+      if (data?.delivery_id) {
+        router.replace(`/delivery/${data.delivery_id}`);
       } else {
         setDirectBuySuccess(true);
         fetchData();
       }
-    } catch (error) {
-      setDirectBuyError('購買失敗，請重試');
+    } catch (error: any) {
+      setDirectBuyError(error?.message || '購買失敗，請重試');
       console.warn(error);
     } finally {
       setDirectBuying(false);
@@ -276,17 +210,16 @@ export default function ProductDetail() {
       });
       if (error || data?.error) throw error || new Error(data?.error);
 
-      const { data: allBids } = await supabase
-        .from('bids')
-        .select('*, bidder:profiles!bidder_id(name, id)')
-        .eq('product_id', id)
-        .order('amount', { ascending: false });
-
       const winnerId = data?.winner_id ?? null;
       const winningAmount = data?.winning_amount ?? null;
-      const bidderIds = (allBids || []).map(b => b.bidder_id).filter(Boolean);
-      if (bidderIds.length > 0 && product) {
-        await sendAuctionNotifications(id as string, product.name, winnerId || null, winningAmount || null, bidderIds);
+
+      if (winnerId && product) {
+        await callRpc('rpc_send_auction_notifications', {
+          p_token: sessionToken,
+          p_product_id: id as string,
+          p_winner_id: winnerId,
+          p_winning_amount: winningAmount ?? 0,
+        });
       }
 
       fetchData();
@@ -324,43 +257,32 @@ export default function ProductDetail() {
   const [deliveryLoading, setDeliveryLoading] = useState(false);
 
   const handleGoToDelivery = async () => {
-    if (!product || !user) return;
+    if (!product || !user || !sessionToken) return;
     setDeliveryLoading(true);
     try {
-      // Look up existing auction delivery
-      const { data: existing } = await supabase
-        .from('deliveries')
-        .select('id')
-        .eq('product_id', product.id)
-        .eq('is_direct_buy', false)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
+      const { data: delivData } = await callRpc<Array<{ id: string; status: string; product_id: string; is_direct_buy: boolean }>>('rpc_get_seller_deliveries', {
+        p_token: sessionToken,
+        p_product_ids: [product.id],
+      });
+      const existing = (delivData as any[] || []).find(d => d.is_direct_buy === false);
       if (existing) {
         router.push({ pathname: '/delivery/[id]' as any, params: { id: existing.id } });
         return;
       }
 
-      // Create delivery record on first access
-      const { data: newDelivery, error } = await supabase
-        .from('deliveries')
-        .insert({
-          product_id: product.id,
-          winner_id: product.winner_id,
-          seller_id: product.seller_id,
-          status: 'pending',
-          is_direct_buy: false,
-          purchase_amount: product.winning_amount ?? 0,
-        })
-        .select('id')
-        .single();
+      const { data: rpcResult, error } = await callRpc<{ delivery_id: string; error?: string }>('rpc_seller_create_delivery', {
+        p_token: sessionToken,
+        p_product_id: product.id,
+        p_winner_id: product.winner_id,
+        p_purchase_amount: product.winning_amount ?? 0,
+        p_is_direct_buy: false,
+      });
 
-      if (error || !newDelivery) {
+      if (error || rpcResult?.error || !rpcResult?.delivery_id) {
         alert('無法建立交付記錄，請重試');
         return;
       }
-      router.push({ pathname: '/delivery/[id]' as any, params: { id: newDelivery.id } });
+      router.push({ pathname: '/delivery/[id]' as any, params: { id: rpcResult.delivery_id } });
     } finally {
       setDeliveryLoading(false);
     }
@@ -369,10 +291,15 @@ export default function ProductDetail() {
   const handleDelist = async () => {
     if (!product || !user || user.id !== product.seller_id) return;
     try {
-      await supabase.from('products').delete().eq('id', id);
+      const { data, error } = await callRpc('rpc_seller_delete_product', {
+        p_token: sessionToken,
+        p_product_id: id as string,
+      });
+      if (error || data?.error) throw error || new Error(data?.error);
       router.back();
     } catch (e) {
       console.error(e);
+      Alert.alert('下架失敗', '請稍後再試');
     }
   };
 

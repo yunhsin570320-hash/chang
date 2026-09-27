@@ -78,10 +78,10 @@ export default function SellerPage() {
 
   const fetchArchivedRecords = async () => {
     if (!sessionToken) return;
-    const { data, error } = await callRpc<ArchivedRecord[]>('rpc_get_seller_archived_deliveries', {
+    const { data, error } = await callRpc<ArchivedRecord[] | { error: string }>('rpc_get_seller_archived_deliveries', {
       p_token: sessionToken,
     });
-    if (error || data?.error) {
+    if (error || (data && !Array.isArray(data))) {
       setArchivedRecords([]);
       return;
     }
@@ -91,16 +91,16 @@ export default function SellerPage() {
   const fetchProducts = async () => {
     if (!user || !sessionToken) return;
     try {
-      const { data, error } = await callRpc<ProductWithCount[]>('rpc_get_seller_product_overview', {
+      const { data, error } = await callRpc<ProductWithCount[] | { error: string }>('rpc_get_seller_product_overview', {
         p_token: sessionToken,
         p_archived: false,
       });
-      if (error || data?.error) {
-        console.warn('Seller fetchProducts error:', error || data?.error);
+      if (error || (data && !Array.isArray(data))) {
+        console.warn('Seller fetchProducts error:', error || (data as any)?.error);
         return;
       }
 
-      const productData = data || [];
+      const productData = (data as ProductWithCount[]) || [];
 
       // Auto-archive any products whose delivery is completed but not yet archived
       const toArchive = productData
@@ -113,11 +113,11 @@ export default function SellerPage() {
           p_product_ids: toArchive,
         });
         // Re-fetch after archiving
-        const { data: refreshed } = await callRpc<ProductWithCount[]>('rpc_get_seller_product_overview', {
+        const { data: refreshed } = await callRpc<ProductWithCount[] | { error: string }>('rpc_get_seller_product_overview', {
           p_token: sessionToken,
           p_archived: false,
         });
-        setProducts(refreshed || []);
+        setProducts((refreshed as ProductWithCount[]) || []);
       } else {
         setProducts(productData);
       }
