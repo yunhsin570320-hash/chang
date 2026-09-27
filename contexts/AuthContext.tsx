@@ -108,8 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error: rpcError } = await callRpc('rpc_login', {
         p_email: email.toLowerCase().trim(),
-        p_password_hash: '',
-        p_password_original: password,
+        p_password_plain: password,
       });
 
       if (rpcError) return { error: '登入失敗，請稍後再試' };

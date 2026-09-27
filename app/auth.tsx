@@ -569,7 +569,7 @@ export default function AuthPage() {
 
                   <Text style={styles.forgotHint}>系統將發送驗證碼到您的註冊手機號碼，驗證後可設定新密碼。</Text>
 
-n                  <TouchableOpacity
+                  <TouchableOpacity
                     style={[styles.submitButton, forgotSubmitting && styles.disabled]}
                     onPress={handleForgotRequest}
                     disabled={forgotSubmitting}
