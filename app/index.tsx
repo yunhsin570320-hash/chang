@@ -17,3 +17,7 @@ export default function RootIndex() {
 
   return <PromoScreen />;
 }
+
+export const unstable_settings = {
+  title: '暗標競標會 — 密封競標平台',
+};

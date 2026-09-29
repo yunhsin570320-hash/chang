@@ -13,7 +13,17 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "meta": {
+        "ogTitle": "暗標競標會 — 密封競標平台",
+        "ogDescription": "密封出價・公平競標・真實交易。誠邀測試會員加入，體驗全功能競標平台。",
+        "ogImage": "https://mobile-blind-auction-t07x.bolt.host/promo-og.png",
+        "ogType": "website",
+        "twitterCard": "summary_large_image",
+        "twitterTitle": "暗標競標會 — 密封競標平台",
+        "twitterDescription": "密封出價・公平競標・真實交易。誠邀測試會員加入。",
+        "twitterImage": "https://mobile-blind-auction-t07x.bolt.host/promo-og.png"
+      }
     },
     "plugins": [
       "expo-router",
