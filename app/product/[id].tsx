@@ -631,7 +631,7 @@ export default function ProductDetail() {
                 <View style={styles.statCard}>
                   <Clock size={18} color="#00D4AA" />
                   <Text style={styles.statLabel}>剩餘時間</Text>
-                  <CountdownTimer endTime={product.end_time || ''} size="large" isEnded={product.status === 'ended'} />
+                  <CountdownTimer endTime={product.end_time || ''} size="medium" isEnded={product.status === 'ended'} />
                 </View>
                 <View style={styles.statCard}>
                   <Users size={18} color="#888" />
