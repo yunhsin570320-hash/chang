@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -12,8 +13,22 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Crown, Shield, Star, Mail, Phone, CheckCircle, Coins, Zap } from 'lucide-react-native';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function PromoScreen() {
+  const router = useRouter();
+  const { user, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace('/(tabs)');
+    }
+  }, [isLoading, user, router]);
+
+  const handleJoin = () => {
+    router.replace('/auth');
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <AnimatedBackground />
@@ -38,7 +53,7 @@ export default function PromoScreen() {
 
           <FeatureList />
 
-          <CTAButton />
+          <CTAButton onPress={handleJoin} />
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>暗標競標會 · 測試版</Text>
@@ -336,7 +351,7 @@ function FeatureRow({
 }
 
 // --- CTA ---
-function CTAButton() {
+function CTAButton({ onPress }: { onPress: () => void }) {
   const pulse = useSharedValue(0);
 
   useEffect(() => {
@@ -358,7 +373,7 @@ function CTAButton() {
 
   return (
     <Pressable
-      onPress={() => Linking.openURL('/')}
+      onPress={onPress}
       style={({ pressed }) => [pressed && { transform: [{ scale: 0.95 }] }]}
     >
       <Animated.View style={[styles.cta, style]}>

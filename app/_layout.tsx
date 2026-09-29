@@ -19,6 +19,7 @@ export default function RootLayout() {
           headerShown: false,
           contentStyle: { backgroundColor: '#0D0D1A' }
         }}>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="auth" options={{ headerShown: false }} />
           <Stack.Screen
             name="(tabs)"

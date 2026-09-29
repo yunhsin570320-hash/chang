@@ -61,15 +61,10 @@ export default function AuthPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (Platform.OS === 'web' && window.location.pathname.replace(/\/+$/, '') === '/auth/promo') {
-      router.replace('/promo');
-      return;
-    }
-
     if (user) {
       router.replace('/(tabs)');
     }
-  }, [router, user]);
+  }, [user]);
 
   // Countdown timer for OTP
   useEffect(() => {
