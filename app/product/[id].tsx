@@ -12,7 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Clock, Users, ShoppingBag, Trophy, EyeOff, X, Crown, RotateCcw, Trash2, Truck, Tag, ShoppingCart, Package, Check, Minus, Plus, Flag, Share2, Link as LinkIcon, Truck as TruckIcon } from 'lucide-react-native';
+import { Clock, Users, ShoppingBag, Trophy, EyeOff, X, Crown, RotateCcw, Trash2, Truck, Tag, ShoppingCart, Package, Check, Minus, Plus, Flag, Share2, Link as LinkIcon, Truck as TruckIcon, MessageCircle } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { supabase, callRpc, Product, Bid, Profile } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -594,6 +594,29 @@ export default function ProductDetail() {
               <Share2 size={12} color="#00D4AA" />
               <Text style={styles.shareBtnText}>分享</Text>
             </TouchableOpacity>
+            {user && !isSeller && (
+              <TouchableOpacity
+                style={styles.contactBtn}
+                onPress={async () => {
+                  if (!sessionToken || !product?.seller_id) return;
+                  const { data, error } = await callRpc<{ conversation_id: string }>('rpc_start_conversation', {
+                    p_token: sessionToken,
+                    p_other_user_id: product.seller_id,
+                    p_product_id: product.id,
+                  });
+                  if (error) {
+                    Alert.alert('無法開啟對話', error.message);
+                    return;
+                  }
+                  if (data?.conversation_id) {
+                    router.push(`/conversation/${data.conversation_id}`);
+                  }
+                }}
+              >
+                <MessageCircle size={12} color="#00D4AA" />
+                <Text style={styles.contactBtnText}>聯繫賣家</Text>
+              </TouchableOpacity>
+            )}
             {user && !isSeller && (
               <TouchableOpacity
                 style={[styles.reportBtn, myReport && styles.reportBtnDone]}
@@ -1506,6 +1529,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,212,170,0.08)', marginLeft: 'auto',
   },
   shareBtnText: { color: '#00D4AA', fontSize: 11, fontWeight: '600' },
+  contactBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(0,212,170,0.4)',
+    backgroundColor: 'rgba(0,212,170,0.08)',
+  },
+  contactBtnText: { color: '#00D4AA', fontSize: 11, fontWeight: '600' },
   shareModalBox: {
     backgroundColor: '#1A1A2E', borderRadius: 24, padding: 24,
     width: '90%', maxWidth: 360, alignItems: 'center',

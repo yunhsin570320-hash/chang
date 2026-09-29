@@ -133,6 +133,11 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_get_chat_threads",
   "rpc_get_chat_messages",
   "rpc_save_chat_message",
+  "rpc_start_conversation",
+  "rpc_send_chat_message",
+  "rpc_get_conversations",
+  "rpc_get_conversation_messages",
+  "rpc_get_unread_message_count",
 ]);
 
 Deno.serve(async (req: Request) => {

@@ -376,13 +376,14 @@ export default function ProfilePage() {
     const isWon = item.type === 'won';
     const isAuctionEnded = item.type === 'auction_ended';
     const isNewBid = item.type === 'new_bid';
+    const isNewMessage = item.type === 'new_message';
     return (
       <TouchableOpacity
         style={[styles.notifCard, !item.is_read && styles.notifCardUnread]}
         onPress={() => { markRead(item.id); if (item.product_id) router.push(`/product/${item.product_id}`); }}
       >
-        <View style={[styles.notifIcon, { backgroundColor: isWon ? 'rgba(255,215,0,0.15)' : isAuctionEnded || isNewBid ? 'rgba(0,212,170,0.15)' : 'rgba(255,107,107,0.15)' }]}>
-          {isWon ? <Trophy size={20} color="#FFD700" /> : isAuctionEnded || isNewBid ? <Bell size={20} color="#00D4AA" /> : <BellOff size={20} color="#FF6B6B" />}
+        <View style={[styles.notifIcon, { backgroundColor: isWon ? 'rgba(255,215,0,0.15)' : isAuctionEnded || isNewBid ? 'rgba(0,212,170,0.15)' : isNewMessage ? 'rgba(0,212,170,0.15)' : 'rgba(255,107,107,0.15)' }]}>
+          {isWon ? <Trophy size={20} color="#FFD700" /> : isAuctionEnded || isNewBid ? <Bell size={20} color="#00D4AA" /> : isNewMessage ? <Bell size={20} color="#00D4AA" /> : <BellOff size={20} color="#FF6B6B" />}
         </View>
         <View style={styles.notifBody}>
           <View style={styles.notifTitleRow}>

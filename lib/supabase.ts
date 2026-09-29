@@ -106,13 +106,39 @@ export type AdminAction = {
 export type Notification = {
   id: string;
   user_id: string;
-  type: 'won' | 'lost' | 'auction_ended' | 'new_bid';
+  type: 'won' | 'lost' | 'auction_ended' | 'new_bid' | 'new_message';
   title: string;
   message: string;
   product_id?: string | null;
   is_read: boolean;
   created_at: string;
 };
+
+export type DMConversation = {
+  id: string;
+  other_user_id: string;
+  other_user_name: string;
+  other_user_blocked?: boolean;
+  product_id?: string | null;
+  last_message?: string | null;
+  last_message_at?: string;
+  last_sender_id?: string | null;
+  unread_count: number;
+  created_at: string;
+};
+
+export type DMMessage = {
+  id: string;
+  sender_id: string;
+  content: string;
+  is_read: boolean;
+  created_at: string;
+};
+
+export async function getUnreadMessageCount(sessionToken: string): Promise<number> {
+  const { data } = await callRpc<number>('rpc_get_unread_message_count', { p_token: sessionToken });
+  return data || 0;
+}
 
 export type Product = {
   id: string;

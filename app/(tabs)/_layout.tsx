@@ -2,12 +2,14 @@ import { Tabs, useRouter, usePathname } from 'expo-router';
 import { StyleSheet, View, Text, TouchableOpacity, Modal, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
-import { Home, Store, User, Crown, ChevronDown, ShieldCheck, ShoppingCart } from 'lucide-react-native';
+import { Home, Store, User, Crown, ChevronDown, ShieldCheck, ShoppingCart, MessageCircle } from 'lucide-react-native';
 import { useAuth } from '../../contexts/AuthContext';
+import { getUnreadMessageCount } from '../../lib/supabase';
 
 export default function TabLayout() {
-  const { user, currentRole, switchRole, logout, canSwitchRoles, isLoading, isAdmin } = useAuth();
+  const { user, currentRole, switchRole, logout, canSwitchRoles, isLoading, isAdmin, sessionToken } = useAuth();
   const [roleModalVisible, setRoleModalVisible] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -18,6 +20,23 @@ export default function TabLayout() {
       router.replace('/auth' as any);
     }
   }, [isLoading, user, router]);
+
+  // Fetch unread message count for badge
+  useEffect(() => {
+    if (!sessionToken) return;
+    getUnreadMessageCount(sessionToken).then(setUnreadMessages).catch(() => {});
+    const interval = setInterval(() => {
+      getUnreadMessageCount(sessionToken).then(setUnreadMessages).catch(() => {});
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [sessionToken]);
+
+  // Refresh unread count when returning to tab screens
+  useEffect(() => {
+    if (sessionToken && !isLoading) {
+      getUnreadMessageCount(sessionToken).then(setUnreadMessages).catch(() => {});
+    }
+  }, [pathname, sessionToken, isLoading]);
 
   // Don't block rendering — let product fetch start immediately in parallel with auth
   if (!isLoading && !user) {
@@ -153,6 +172,14 @@ export default function TabLayout() {
         options={{
           title: '直購廳',
           tabBarIcon: ({ size, color }) => <ShoppingCart size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: '訊息',
+          tabBarIcon: ({ size, color }) => <MessageCircle size={size} color={color} />,
+          tabBarBadge: unreadMessages > 0 ? unreadMessages : undefined,
         }}
       />
       <Tabs.Screen
