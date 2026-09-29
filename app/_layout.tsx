@@ -33,6 +33,12 @@ export default function RootLayout() {
               headerTitleStyle: { color: '#fff' },
             }}
           />
+          <Stack.Screen
+            name="conversation/[id]"
+            options={{
+              headerShown: false,
+            }}
+          />
         </Stack>
       </AuthProvider>
     </GestureHandlerRootView>
