@@ -1,363 +1,596 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { WebView } from 'react-native-webview';
-
-const PROMO_HTML = `
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>暗標競標會 — 測試會員招募</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: -apple-system, 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
-    background: #0a0e17;
-    color: #fff;
-    overflow-x: hidden;
-    min-height: 100vh;
-  }
-
-  .bg-stars {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background:
-      radial-gradient(2px 2px at 20% 30%, rgba(0,212,170,0.6), transparent),
-      radial-gradient(2px 2px at 60% 70%, rgba(255,215,0,0.5), transparent),
-      radial-gradient(1px 1px at 50% 50%, rgba(255,255,255,0.4), transparent),
-      radial-gradient(1px 1px at 80% 10%, rgba(0,212,170,0.4), transparent),
-      radial-gradient(2px 2px at 90% 60%, rgba(255,215,0,0.3), transparent),
-      radial-gradient(1px 1px at 33% 80%, rgba(255,255,255,0.3), transparent),
-      radial-gradient(1px 1px at 15% 90%, rgba(0,212,170,0.4), transparent);
-    background-size: 200% 200%;
-    animation: drift 60s linear infinite;
-    z-index: 0;
-  }
-
-  @keyframes drift {
-    0%   { background-position: 0% 0%; }
-    100% { background-position: 200% 200%; }
-  }
-
-  .bg-glow {
-    position: fixed; top: 50%; left: 50%;
-    width: 600px; height: 600px;
-    background: radial-gradient(circle, rgba(0,212,170,0.15), transparent 70%);
-    transform: translate(-50%, -50%);
-    animation: pulse-glow 4s ease-in-out infinite;
-    z-index: 0; pointer-events: none;
-  }
-
-  @keyframes pulse-glow {
-    0%, 100% { transform: translate(-50%,-50%) scale(1); opacity: 0.6; }
-    50%      { transform: translate(-50%,-50%) scale(1.3); opacity: 1; }
-  }
-
-  .card {
-    position: relative; z-index: 1;
-    max-width: 540px;
-    margin: 40px auto;
-    background: linear-gradient(135deg, #111827 0%, #0f1923 100%);
-    border: 1px solid rgba(0,212,170,0.2);
-    border-radius: 24px;
-    padding: 48px 40px;
-    text-align: center;
-    box-shadow: 0 0 40px rgba(0,212,170,0.08), 0 20px 60px rgba(0,0,0,0.5);
-    animation: card-enter 0.8s cubic-bezier(0.16,1,0.3,1) both;
-  }
-
-  @keyframes card-enter {
-    from { opacity: 0; transform: translateY(30px) scale(0.96); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
-  }
-
-  .crown-wrap {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 72px; height: 72px;
-    background: linear-gradient(135deg, #00D4AA, #00B894);
-    border-radius: 20px;
-    margin-bottom: 24px;
-    animation: crown-float 3s ease-in-out infinite;
-    box-shadow: 0 8px 30px rgba(0,212,170,0.3);
-  }
-
-  @keyframes crown-float {
-    0%, 100% { transform: translateY(0) rotate(0deg); }
-    50%      { transform: translateY(-6px) rotate(-3deg); }
-  }
-
-  .crown-svg { width: 36px; height: 36px; fill: #fff; }
-
-  .title {
-    font-size: 32px; font-weight: 900;
-    background: linear-gradient(90deg, #00D4AA, #FFD700, #00D4AA);
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: shimmer 3s linear infinite;
-    margin-bottom: 8px;
-  }
-
-  @keyframes shimmer {
-    0%   { background-position: 0% center; }
-    100% { background-position: 200% center; }
-  }
-
-  .subtitle {
-    font-size: 15px; color: #66778a; font-weight: 400;
-    margin-bottom: 28px; letter-spacing: 1px;
-  }
-
-  .highlight {
-    background: rgba(0,212,170,0.08);
-    border: 1px solid rgba(0,212,170,0.15);
-    border-radius: 14px;
-    padding: 18px;
-    margin-bottom: 24px;
-    animation: fade-up 0.6s 0.3s both;
-  }
-
-  @keyframes fade-up {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  .highlight-text {
-    font-size: 17px; font-weight: 700; color: #00D4AA;
-    line-height: 1.6;
-  }
-
-  .highlight-sub {
-    font-size: 13px; color: #8895a6; margin-top: 6px;
-  }
-
-  .features {
-    text-align: left; margin-bottom: 28px;
-  }
-
-  .feature {
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    animation: slide-in 0.5s both;
-  }
-
-  .feature:nth-child(1) { animation-delay: 0.4s; }
-  .feature:nth-child(2) { animation-delay: 0.5s; }
-  .feature:nth-child(3) { animation-delay: 0.6s; }
-  .feature:nth-child(4) { animation-delay: 0.7s; }
-  .feature:nth-child(5) { animation-delay: 0.8s; }
-
-  @keyframes slide-in {
-    from { opacity: 0; transform: translateX(-20px); }
-    to   { opacity: 1; transform: translateX(0); }
-  }
-
-  .feature-icon {
-    flex-shrink: 0;
-    width: 28px; height: 28px;
-    background: rgba(0,212,170,0.12);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-  }
-
-  .feature-icon svg { width: 16px; height: 16px; fill: #00D4AA; }
-
-  .feature-text {
-    font-size: 15px; color: #c8d3e0; font-weight: 400;
-  }
-
-  .feature-text strong { color: #fff; font-weight: 700; }
-
-  .cta {
-    display: inline-block;
-    background: linear-gradient(135deg, #00D4AA, #00B894);
-    color: #0a0e17;
-    font-size: 18px; font-weight: 900;
-    padding: 16px 40px;
-    border-radius: 14px;
-    text-decoration: none;
-    animation: cta-pulse 2s ease-in-out infinite;
-    box-shadow: 0 6px 25px rgba(0,212,170,0.3);
-    transition: transform 0.2s;
-  }
-
-  .cta:hover { transform: scale(1.05); }
-
-  @keyframes cta-pulse {
-    0%, 100% { box-shadow: 0 6px 25px rgba(0,212,170,0.3); }
-    50%      { box-shadow: 0 6px 40px rgba(0,212,170,0.55); }
-  }
-
-  .footer {
-    margin-top: 24px;
-    font-size: 13px; color: #445566;
-  }
-
-  .footer-tag {
-    display: inline-block;
-    background: rgba(255,215,0,0.1);
-    color: #FFD700;
-    border: 1px solid rgba(255,215,0,0.2);
-    border-radius: 20px;
-    padding: 4px 14px;
-    font-size: 12px; font-weight: 700;
-    margin-top: 12px;
-    animation: tag-bounce 2s ease-in-out infinite;
-  }
-
-  @keyframes tag-bounce {
-    0%, 100% { transform: translateY(0); }
-    50%      { transform: translateY(-3px); }
-  }
-
-  .badges {
-    display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
-    margin-bottom: 20px;
-    animation: fade-up 0.6s 0.2s both;
-  }
-
-  .badge {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 10px;
-    padding: 6px 14px;
-    font-size: 13px; font-weight: 700;
-    color: #8895a6;
-  }
-
-  .badge .dot {
-    display: inline-block;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    margin-right: 6px;
-    animation: dot-blink 1.5s ease-in-out infinite;
-  }
-
-  .badge.live .dot { background: #00D4AA; }
-  .badge.free .dot { background: #FFD700; animation-delay: 0.3s; }
-  .badge.secure .dot { background: #3B82F6; animation-delay: 0.6s; }
-
-  @keyframes dot-blink {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.3; }
-  }
-
-  .badge.live { color: #00D4AA; }
-  .badge.free { color: #FFD700; }
-  .badge.secure { color: #3B82F6; }
-
-  .coin {
-    position: fixed;
-    width: 24px; height: 24px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, #FFE066, #FFD700, #DAA520);
-    box-shadow: 0 0 12px rgba(255,215,0,0.4);
-    z-index: 0; pointer-events: none;
-    animation: coin-float 8s ease-in-out infinite;
-  }
-
-  .coin:nth-child(1) { left: 8%;  top: 15%; animation-delay: 0s;   }
-  .coin:nth-child(2) { left: 85%; top: 20%; animation-delay: 1.5s; width: 18px; height: 18px; }
-  .coin:nth-child(3) { left: 15%; top: 75%; animation-delay: 3s;   width: 20px; height: 20px; }
-  .coin:nth-child(4) { left: 78%; top: 70%; animation-delay: 2s;   }
-  .coin:nth-child(5) { left: 50%; top: 8%;  animation-delay: 4s;   width: 16px; height: 16px; }
-
-  @keyframes coin-float {
-    0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.7; }
-    50%      { transform: translateY(-30px) rotate(180deg); opacity: 1; }
-  }
-</style>
-</head>
-<body>
-
-<div class="bg-stars"></div>
-<div class="bg-glow"></div>
-<div class="coin"></div><div class="coin"></div><div class="coin"></div><div class="coin"></div><div class="coin"></div>
-
-<div class="card">
-
-  <div class="crown-wrap">
-    <svg class="crown-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm0 2h14v2H5v-2z"/>
-    </svg>
-  </div>
-
-  <h1 class="title">暗標競標會</h1>
-  <p class="subtitle">密封出價・公平競標・真實交易</p>
-
-  <div class="badges">
-    <div class="badge live"><span class="dot"></span>測試中</div>
-    <div class="badge free"><span class="dot"></span>免費加入</div>
-    <div class="badge secure"><span class="dot"></span>安全加密</div>
-  </div>
-
-  <div class="highlight">
-    <div class="highlight-text">誠邀測試會員加入</div>
-    <div class="highlight-sub">體驗全功能競標平台，您的意見將幫助我們更好</div>
-  </div>
-
-  <div class="features">
-    <div class="feature">
-      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z"/></svg></div>
-      <div class="feature-text"><strong>密封暗標制</strong> — 出價全程保密，最高者得標</div>
-    </div>
-    <div class="feature">
-      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg></div>
-      <div class="feature-text"><strong>直接購買</strong> — 部分商品可跳過競標直接入手</div>
-    </div>
-    <div class="feature">
-      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></div>
-      <div class="feature-text"><strong>買賣私訊</strong> — 得標後可直接與賣家聯繫交付</div>
-    </div>
-    <div class="feature">
-      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V5l-9-4z"/></svg></div>
-      <div class="feature-text"><strong>手機驗證</strong> — 簡訊OTP認證，保障帳戶安全</div>
-    </div>
-    <div class="feature">
-      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-2 15l-5-5 1.4-1.4L10 14.2l7.6-7.6L19 8l-9 9z"/></svg></div>
-      <div class="feature-text"><strong>會員制度</strong> — VIP享專屬權限與競標保障</div>
-    </div>
-  </div>
-
-  <div>
-    <span class="cta">立即加入測試</span>
-  </div>
-
-  <div class="footer">
-    暗標競標會 · 測試版<br>
-    <span class="footer-tag">名額有限·即刻報名</span>
-  </div>
-
-</div>
-
-</body>
-</html>
-`;
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Linking } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withDelay,
+  Easing,
+  interpolate,
+} from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Crown, Shield, Star, Mail, Phone, CheckCircle, Coins, Zap } from 'lucide-react-native';
 
 export default function PromoScreen() {
   return (
-    <View style={styles.container}>
-      <WebView
-        source={{ html: PROMO_HTML }}
-        style={styles.webview}
-        scrollEnabled
-        bounces
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <AnimatedBackground />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-      />
+        bounces
+      >
+        <FloatingCoins />
+
+        <AnimatedCard>
+          <CrownBadge />
+
+          <ShimmerTitle text="暗標競標會" />
+
+          <Text style={styles.subtitle}>密封出價・公平競標・真實交易</Text>
+
+          <Badges />
+
+          <HighlightBox />
+
+          <FeatureList />
+
+          <CTAButton />
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>暗標競標會 · 測試版</Text>
+            <FooterTag />
+          </View>
+        </AnimatedCard>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// --- Animated background ---
+function AnimatedBackground() {
+  const glow = useSharedValue(0);
+
+  useEffect(() => {
+    glow.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 2000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, []);
+
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(glow.value, [0, 1], [0.3, 0.8]),
+    transform: [{ scale: interpolate(glow.value, [0, 1], [0.9, 1.2]) }],
+  }));
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={styles.bgBase} />
+      <Animated.View style={[styles.bgGlow, glowStyle]} />
+      {STARS.map((s, i) => (
+        <View
+          key={i}
+          style={[styles.star, { left: s.x, top: s.y, width: s.size, height: s.size, opacity: s.opacity }]}
+        />
+      ))}
     </View>
   );
 }
 
+const STARS = [
+  { x: '12%', y: '8%', size: 3, opacity: 0.6 },
+  { x: '85%', y: '12%', size: 2, opacity: 0.5 },
+  { x: '45%', y: '22%', size: 2, opacity: 0.4 },
+  { x: '70%', y: '35%', size: 3, opacity: 0.5 },
+  { x: '20%', y: '45%', size: 2, opacity: 0.3 },
+  { x: '90%', y: '55%', size: 2, opacity: 0.4 },
+  { x: '30%', y: '68%', size: 3, opacity: 0.5 },
+  { x: '60%', y: '78%', size: 2, opacity: 0.3 },
+  { x: '15%', y: '88%', size: 2, opacity: 0.4 },
+  { x: '75%', y: '92%', size: 3, opacity: 0.5 },
+];
+
+// --- Floating coins ---
+function FloatingCoins() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {COINS.map((c, i) => (
+        <Coin key={i} {...c} />
+      ))}
+    </View>
+  );
+}
+
+const COINS = [
+  { x: '8%', y: '15%', size: 24, delay: 0 },
+  { x: '85%', y: '20%', size: 18, delay: 300 },
+  { x: '15%', y: '75%', size: 20, delay: 600 },
+  { x: '78%', y: '70%', size: 24, delay: 400 },
+  { x: '50%', y: '8%', size: 16, delay: 800 },
+];
+
+function Coin({ x, y, size, delay }: { x: string; y: string; size: number; delay: number }) {
+  const float = useSharedValue(0);
+
+  useEffect(() => {
+    float.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0, { duration: 3000, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      )
+    );
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(float.value, [0, 1], [0, -25]) },
+      { rotate: `${interpolate(float.value, [0, 1], [0, 180])}deg` },
+    ],
+    opacity: interpolate(float.value, [0, 0.5, 1], [0.5, 0.9, 0.5]),
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.coin,
+        { left: x as any, top: y as any, width: size, height: size, borderRadius: size / 2 },
+        style,
+      ]}
+    >
+      <Coins size={size * 0.6} color="#FFD700" strokeWidth={1.5} />
+    </Animated.View>
+  );
+}
+
+// --- Card ---
+function AnimatedCard({ children }: { children: React.ReactNode }) {
+  const enter = useSharedValue(0);
+
+  useEffect(() => {
+    enter.value = withTiming(1, { duration: 800, easing: Easing.out(Easing.cubic) });
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: enter.value,
+    transform: [
+      { translateY: interpolate(enter.value, [0, 1], [30, 0]) },
+      { scale: interpolate(enter.value, [0, 1], [0.96, 1]) },
+    ],
+  }));
+
+  return <Animated.View style={[styles.card, style]}>{children}</Animated.View>;
+}
+
+// --- Crown badge ---
+function CrownBadge() {
+  const float = useSharedValue(0);
+
+  useEffect(() => {
+    float.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 1500, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(float.value, [0, 1], [0, -6]) },
+      { rotate: `${interpolate(float.value, [0, 1], [0, -3])}deg` },
+    ],
+  }));
+
+  return (
+    <Animated.View style={[styles.crownWrap, style]}>
+      <Crown size={36} color="#fff" strokeWidth={2} />
+    </Animated.View>
+  );
+}
+
+// --- Shimmer title ---
+function ShimmerTitle({ text }: { text: string }) {
+  const shift = useSharedValue(0);
+
+  useEffect(() => {
+    shift.value = withRepeat(withTiming(1, { duration: 3000, easing: Easing.linear }), -1);
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: interpolate(shift.value, [0, 0.5, 1], [0.85, 1, 0.85]),
+  }));
+
+  return (
+    <Animated.Text style={[styles.title, style]} allowFontScaling>
+      {text}
+    </Animated.Text>
+  );
+}
+
+// --- Badges ---
+function Badges() {
+  return (
+    <View style={styles.badges}>
+      <Badge color="#00D4AA" label="測試中" icon={<Zap size={10} color="#00D4AA" strokeWidth={2.5} />} />
+      <Badge color="#FFD700" label="免費加入" icon={<Star size={10} color="#FFD700" strokeWidth={2.5} />} />
+      <Badge color="#3B82F6" label="安全加密" icon={<Shield size={10} color="#3B82F6" strokeWidth={2.5} />} />
+    </View>
+  );
+}
+
+function Badge({ color, label, icon }: { color: string; label: string; icon: React.ReactNode }) {
+  const blink = useSharedValue(0);
+
+  useEffect(() => {
+    blink.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 750, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 750, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, []);
+
+  const dotStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(blink.value, [0, 1], [1, 0.3]),
+  }));
+
+  return (
+    <View style={styles.badge}>
+      <Animated.View style={[styles.badgeDot, { backgroundColor: color }, dotStyle]} />
+      {icon}
+      <Text style={[styles.badgeText, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+// --- Highlight ---
+function HighlightBox() {
+  const fade = useSharedValue(0);
+
+  useEffect(() => {
+    fade.value = withDelay(300, withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) }));
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: fade.value,
+    transform: [{ translateY: interpolate(fade.value, [0, 1], [12, 0]) }],
+  }));
+
+  return (
+    <Animated.View style={[styles.highlight, style]}>
+      <Text style={styles.highlightText}>誠邀測試會員加入</Text>
+      <Text style={styles.highlightSub}>體驗全功能競標平台，您的意見將幫助我們更好</Text>
+    </Animated.View>
+  );
+}
+
+// --- Feature list ---
+const FEATURES = [
+  { icon: Shield, title: '密封暗標制', desc: '出價全程保密，最高者得標' },
+  { icon: Star, title: '直接購買', desc: '部分商品可跳過競標直接入手' },
+  { icon: Mail, title: '買賣私訊', desc: '得標後可直接與賣家聯繫交付' },
+  { icon: Phone, title: '手機驗證', desc: '簡訊OTP認證，保障帳戶安全' },
+  { icon: CheckCircle, title: '會員制度', desc: 'VIP享專屬權限與競標保障' },
+];
+
+function FeatureList() {
+  return (
+    <View style={styles.features}>
+      {FEATURES.map((f, i) => (
+        <FeatureRow key={i} {...f} index={i} />
+      ))}
+    </View>
+  );
+}
+
+function FeatureRow({
+  icon: Icon,
+  title,
+  desc,
+  index,
+}: {
+  icon: typeof Shield;
+  title: string;
+  desc: string;
+  index: number;
+}) {
+  const slide = useSharedValue(0);
+
+  useEffect(() => {
+    slide.value = withDelay(400 + index * 100, withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) }));
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: slide.value,
+    transform: [{ translateX: interpolate(slide.value, [0, 1], [-20, 0]) }],
+  }));
+
+  return (
+    <Animated.View style={[styles.feature, style]}>
+      <View style={styles.featureIcon}>
+        <Icon size={16} color="#00D4AA" strokeWidth={2} />
+      </View>
+      <Text style={styles.featureText}>
+        <Text style={styles.featureBold}>{title}</Text>
+        {' — '}
+        {desc}
+      </Text>
+    </Animated.View>
+  );
+}
+
+// --- CTA ---
+function CTAButton() {
+  const pulse = useSharedValue(0);
+
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    shadowOpacity: interpolate(pulse.value, [0, 1], [0.3, 0.55]),
+    shadowRadius: interpolate(pulse.value, [0, 1], [15, 30]),
+    transform: [{ scale: 1 }],
+  }));
+
+  return (
+    <Pressable
+      onPress={() => Linking.openURL('/')}
+      style={({ pressed }) => [pressed && { transform: [{ scale: 0.95 }] }]}
+    >
+      <Animated.View style={[styles.cta, style]}>
+        <Text style={styles.ctaText}>立即加入測試</Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// --- Footer tag ---
+function FooterTag() {
+  const bounce = useSharedValue(0);
+
+  useEffect(() => {
+    bounce.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateY: interpolate(bounce.value, [0, 1], [0, -3]) }],
+  }));
+
+  return (
+    <Animated.View style={[styles.footerTag, style]}>
+      <Text style={styles.footerTagText}>名額有限·即刻報名</Text>
+    </Animated.View>
+  );
+}
+
+// --- Styles ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0e17',
   },
-  webview: {
+  scrollView: {
     flex: 1,
-    backgroundColor: 'transparent',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  bgBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0a0e17',
+  },
+  bgGlow: {
+    position: 'absolute',
+    top: '30%',
+    left: '50%',
+    width: 400,
+    height: 400,
+    marginLeft: -200,
+    marginTop: -200,
+    borderRadius: 200,
+    backgroundColor: 'rgba(0,212,170,0.12)',
+  },
+  star: {
+    position: 'absolute',
+    borderRadius: 99,
+    backgroundColor: '#00D4AA',
+  },
+  coin: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 500,
+    backgroundColor: 'rgba(17,24,39,0.95)',
+    borderRadius: 24,
+    padding: 40,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,212,170,0.2)',
+    shadowColor: '#00D4AA',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 40,
+    elevation: 10,
+  },
+  crownWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: '#00D4AA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    shadowColor: '#00D4AA',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: '#00D4AA',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#66778a',
+    marginBottom: 24,
+    letterSpacing: 1,
+  },
+  badges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 20,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  badgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 2,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  highlight: {
+    width: '100%',
+    backgroundColor: 'rgba(0,212,170,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,212,170,0.15)',
+    borderRadius: 14,
+    padding: 18,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  highlightText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#00D4AA',
+    lineHeight: 24,
+  },
+  highlightSub: {
+    fontSize: 13,
+    color: '#8895a6',
+    marginTop: 6,
+  },
+  features: {
+    width: '100%',
+    marginBottom: 28,
+  },
+  feature: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  featureIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,212,170,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featureText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#c8d3e0',
+    lineHeight: 20,
+  },
+  featureBold: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  cta: {
+    paddingHorizontal: 40,
+    paddingVertical: 16,
+    borderRadius: 14,
+    backgroundColor: '#00D4AA',
+    shadowColor: '#00D4AA',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  ctaText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0a0e17',
+  },
+  footer: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#445566',
+  },
+  footerTag: {
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,215,0,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.2)',
+  },
+  footerTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFD700',
   },
 });
