@@ -50,6 +50,7 @@ export default function ProductDetail() {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [contacting, setContacting] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
   const { user, currentRole, sessionToken, refreshUser } = useAuth();
 
   const fetchData = useCallback(async () => {
@@ -599,8 +600,13 @@ export default function ProductDetail() {
               <TouchableOpacity
                 style={[styles.contactBtn, contacting && { opacity: 0.6 }]}
                 onPress={async () => {
-                  if (!sessionToken || !product?.seller_id) {
-                    Alert.alert('無法開啟對話', '登入資訊遺失，請重新登入');
+                  setContactError(null);
+                  if (!sessionToken) {
+                    setContactError('請先登入');
+                    return;
+                  }
+                  if (!product?.seller_id) {
+                    setContactError('找不到賣家資訊');
                     return;
                   }
                   setContacting(true);
@@ -611,16 +617,19 @@ export default function ProductDetail() {
                       p_product_id: product.id,
                     });
                     if (error) {
-                      Alert.alert('無法開啟對話', error.message);
+                      console.error('[contact] rpc error:', error);
+                      setContactError(error.message);
                       return;
                     }
                     if (data?.conversation_id) {
                       router.push(`/conversation/${data.conversation_id}`);
                     } else {
-                      Alert.alert('無法開啟對話', '伺服器未回傳對話 ID');
+                      console.error('[contact] no conversation_id in response:', data);
+                      setContactError('伺服器未回傳對話 ID');
                     }
                   } catch (e: any) {
-                    Alert.alert('無法開啟對話', e?.message || '發生未知錯誤');
+                    console.error('[contact] exception:', e);
+                    setContactError(e?.message || '發生未知錯誤');
                   } finally {
                     setContacting(false);
                   }
@@ -648,6 +657,9 @@ export default function ProductDetail() {
               </TouchableOpacity>
             )}
           </View>
+          {contactError && (
+            <Text style={{ color: '#FF6B6B', fontSize: 12, marginBottom: 8, marginTop: -8 }}>{contactError}</Text>
+          )}
 
           <View style={styles.statsRow}>
             {isDirectBuy ? (
