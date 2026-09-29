@@ -49,6 +49,7 @@ export default function ProductDetail() {
   const [myReport, setMyReport] = useState<any>(null);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [contacting, setContacting] = useState(false);
   const { user, currentRole, sessionToken, refreshUser } = useAuth();
 
   const fetchData = useCallback(async () => {
@@ -596,24 +597,41 @@ export default function ProductDetail() {
             </TouchableOpacity>
             {user && !isSeller && (
               <TouchableOpacity
-                style={styles.contactBtn}
+                style={[styles.contactBtn, contacting && { opacity: 0.6 }]}
                 onPress={async () => {
-                  if (!sessionToken || !product?.seller_id) return;
-                  const { data, error } = await callRpc<{ conversation_id: string }>('rpc_start_conversation', {
-                    p_token: sessionToken,
-                    p_other_user_id: product.seller_id,
-                    p_product_id: product.id,
-                  });
-                  if (error) {
-                    Alert.alert('無法開啟對話', error.message);
+                  if (!sessionToken || !product?.seller_id) {
+                    Alert.alert('無法開啟對話', '登入資訊遺失，請重新登入');
                     return;
                   }
-                  if (data?.conversation_id) {
-                    router.push(`/conversation/${data.conversation_id}`);
+                  setContacting(true);
+                  try {
+                    const { data, error } = await callRpc<{ conversation_id: string }>('rpc_start_conversation', {
+                      p_token: sessionToken,
+                      p_other_user_id: product.seller_id,
+                      p_product_id: product.id,
+                    });
+                    if (error) {
+                      Alert.alert('無法開啟對話', error.message);
+                      return;
+                    }
+                    if (data?.conversation_id) {
+                      router.push(`/conversation/${data.conversation_id}`);
+                    } else {
+                      Alert.alert('無法開啟對話', '伺服器未回傳對話 ID');
+                    }
+                  } catch (e: any) {
+                    Alert.alert('無法開啟對話', e?.message || '發生未知錯誤');
+                  } finally {
+                    setContacting(false);
                   }
                 }}
+                disabled={contacting}
               >
-                <MessageCircle size={12} color="#00D4AA" />
+                {contacting ? (
+                  <ActivityIndicator size={12} color="#00D4AA" />
+                ) : (
+                  <MessageCircle size={12} color="#00D4AA" />
+                )}
                 <Text style={styles.contactBtnText}>聯繫賣家</Text>
               </TouchableOpacity>
             )}
