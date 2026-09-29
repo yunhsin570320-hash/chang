@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+// redeploy trigger
 
 // ── CORS: restrict to configured app origin ──
 const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "*";
