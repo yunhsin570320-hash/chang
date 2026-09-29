@@ -1,0 +1,363 @@
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
+import { WebView } from 'react-native-webview';
+
+const PROMO_HTML = `
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>暗標競標會 — 測試會員招募</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+    background: #0a0e17;
+    color: #fff;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .bg-stars {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background:
+      radial-gradient(2px 2px at 20% 30%, rgba(0,212,170,0.6), transparent),
+      radial-gradient(2px 2px at 60% 70%, rgba(255,215,0,0.5), transparent),
+      radial-gradient(1px 1px at 50% 50%, rgba(255,255,255,0.4), transparent),
+      radial-gradient(1px 1px at 80% 10%, rgba(0,212,170,0.4), transparent),
+      radial-gradient(2px 2px at 90% 60%, rgba(255,215,0,0.3), transparent),
+      radial-gradient(1px 1px at 33% 80%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(1px 1px at 15% 90%, rgba(0,212,170,0.4), transparent);
+    background-size: 200% 200%;
+    animation: drift 60s linear infinite;
+    z-index: 0;
+  }
+
+  @keyframes drift {
+    0%   { background-position: 0% 0%; }
+    100% { background-position: 200% 200%; }
+  }
+
+  .bg-glow {
+    position: fixed; top: 50%; left: 50%;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(0,212,170,0.15), transparent 70%);
+    transform: translate(-50%, -50%);
+    animation: pulse-glow 4s ease-in-out infinite;
+    z-index: 0; pointer-events: none;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { transform: translate(-50%,-50%) scale(1); opacity: 0.6; }
+    50%      { transform: translate(-50%,-50%) scale(1.3); opacity: 1; }
+  }
+
+  .card {
+    position: relative; z-index: 1;
+    max-width: 540px;
+    margin: 40px auto;
+    background: linear-gradient(135deg, #111827 0%, #0f1923 100%);
+    border: 1px solid rgba(0,212,170,0.2);
+    border-radius: 24px;
+    padding: 48px 40px;
+    text-align: center;
+    box-shadow: 0 0 40px rgba(0,212,170,0.08), 0 20px 60px rgba(0,0,0,0.5);
+    animation: card-enter 0.8s cubic-bezier(0.16,1,0.3,1) both;
+  }
+
+  @keyframes card-enter {
+    from { opacity: 0; transform: translateY(30px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .crown-wrap {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 72px; height: 72px;
+    background: linear-gradient(135deg, #00D4AA, #00B894);
+    border-radius: 20px;
+    margin-bottom: 24px;
+    animation: crown-float 3s ease-in-out infinite;
+    box-shadow: 0 8px 30px rgba(0,212,170,0.3);
+  }
+
+  @keyframes crown-float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50%      { transform: translateY(-6px) rotate(-3deg); }
+  }
+
+  .crown-svg { width: 36px; height: 36px; fill: #fff; }
+
+  .title {
+    font-size: 32px; font-weight: 900;
+    background: linear-gradient(90deg, #00D4AA, #FFD700, #00D4AA);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 3s linear infinite;
+    margin-bottom: 8px;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: 0% center; }
+    100% { background-position: 200% center; }
+  }
+
+  .subtitle {
+    font-size: 15px; color: #66778a; font-weight: 400;
+    margin-bottom: 28px; letter-spacing: 1px;
+  }
+
+  .highlight {
+    background: rgba(0,212,170,0.08);
+    border: 1px solid rgba(0,212,170,0.15);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 24px;
+    animation: fade-up 0.6s 0.3s both;
+  }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .highlight-text {
+    font-size: 17px; font-weight: 700; color: #00D4AA;
+    line-height: 1.6;
+  }
+
+  .highlight-sub {
+    font-size: 13px; color: #8895a6; margin-top: 6px;
+  }
+
+  .features {
+    text-align: left; margin-bottom: 28px;
+  }
+
+  .feature {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    animation: slide-in 0.5s both;
+  }
+
+  .feature:nth-child(1) { animation-delay: 0.4s; }
+  .feature:nth-child(2) { animation-delay: 0.5s; }
+  .feature:nth-child(3) { animation-delay: 0.6s; }
+  .feature:nth-child(4) { animation-delay: 0.7s; }
+  .feature:nth-child(5) { animation-delay: 0.8s; }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-20px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .feature-icon {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    background: rgba(0,212,170,0.12);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .feature-icon svg { width: 16px; height: 16px; fill: #00D4AA; }
+
+  .feature-text {
+    font-size: 15px; color: #c8d3e0; font-weight: 400;
+  }
+
+  .feature-text strong { color: #fff; font-weight: 700; }
+
+  .cta {
+    display: inline-block;
+    background: linear-gradient(135deg, #00D4AA, #00B894);
+    color: #0a0e17;
+    font-size: 18px; font-weight: 900;
+    padding: 16px 40px;
+    border-radius: 14px;
+    text-decoration: none;
+    animation: cta-pulse 2s ease-in-out infinite;
+    box-shadow: 0 6px 25px rgba(0,212,170,0.3);
+    transition: transform 0.2s;
+  }
+
+  .cta:hover { transform: scale(1.05); }
+
+  @keyframes cta-pulse {
+    0%, 100% { box-shadow: 0 6px 25px rgba(0,212,170,0.3); }
+    50%      { box-shadow: 0 6px 40px rgba(0,212,170,0.55); }
+  }
+
+  .footer {
+    margin-top: 24px;
+    font-size: 13px; color: #445566;
+  }
+
+  .footer-tag {
+    display: inline-block;
+    background: rgba(255,215,0,0.1);
+    color: #FFD700;
+    border: 1px solid rgba(255,215,0,0.2);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 12px; font-weight: 700;
+    margin-top: 12px;
+    animation: tag-bounce 2s ease-in-out infinite;
+  }
+
+  @keyframes tag-bounce {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-3px); }
+  }
+
+  .badges {
+    display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 20px;
+    animation: fade-up 0.6s 0.2s both;
+  }
+
+  .badge {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 6px 14px;
+    font-size: 13px; font-weight: 700;
+    color: #8895a6;
+  }
+
+  .badge .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    margin-right: 6px;
+    animation: dot-blink 1.5s ease-in-out infinite;
+  }
+
+  .badge.live .dot { background: #00D4AA; }
+  .badge.free .dot { background: #FFD700; animation-delay: 0.3s; }
+  .badge.secure .dot { background: #3B82F6; animation-delay: 0.6s; }
+
+  @keyframes dot-blink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.3; }
+  }
+
+  .badge.live { color: #00D4AA; }
+  .badge.free { color: #FFD700; }
+  .badge.secure { color: #3B82F6; }
+
+  .coin {
+    position: fixed;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #FFE066, #FFD700, #DAA520);
+    box-shadow: 0 0 12px rgba(255,215,0,0.4);
+    z-index: 0; pointer-events: none;
+    animation: coin-float 8s ease-in-out infinite;
+  }
+
+  .coin:nth-child(1) { left: 8%;  top: 15%; animation-delay: 0s;   }
+  .coin:nth-child(2) { left: 85%; top: 20%; animation-delay: 1.5s; width: 18px; height: 18px; }
+  .coin:nth-child(3) { left: 15%; top: 75%; animation-delay: 3s;   width: 20px; height: 20px; }
+  .coin:nth-child(4) { left: 78%; top: 70%; animation-delay: 2s;   }
+  .coin:nth-child(5) { left: 50%; top: 8%;  animation-delay: 4s;   width: 16px; height: 16px; }
+
+  @keyframes coin-float {
+    0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.7; }
+    50%      { transform: translateY(-30px) rotate(180deg); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-stars"></div>
+<div class="bg-glow"></div>
+<div class="coin"></div><div class="coin"></div><div class="coin"></div><div class="coin"></div><div class="coin"></div>
+
+<div class="card">
+
+  <div class="crown-wrap">
+    <svg class="crown-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm0 2h14v2H5v-2z"/>
+    </svg>
+  </div>
+
+  <h1 class="title">暗標競標會</h1>
+  <p class="subtitle">密封出價・公平競標・真實交易</p>
+
+  <div class="badges">
+    <div class="badge live"><span class="dot"></span>測試中</div>
+    <div class="badge free"><span class="dot"></span>免費加入</div>
+    <div class="badge secure"><span class="dot"></span>安全加密</div>
+  </div>
+
+  <div class="highlight">
+    <div class="highlight-text">誠邀測試會員加入</div>
+    <div class="highlight-sub">體驗全功能競標平台，您的意見將幫助我們更好</div>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z"/></svg></div>
+      <div class="feature-text"><strong>密封暗標制</strong> — 出價全程保密，最高者得標</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg></div>
+      <div class="feature-text"><strong>直接購買</strong> — 部分商品可跳過競標直接入手</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></div>
+      <div class="feature-text"><strong>買賣私訊</strong> — 得標後可直接與賣家聯繫交付</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V5l-9-4z"/></svg></div>
+      <div class="feature-text"><strong>手機驗證</strong> — 簡訊OTP認證，保障帳戶安全</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-2 15l-5-5 1.4-1.4L10 14.2l7.6-7.6L19 8l-9 9z"/></svg></div>
+      <div class="feature-text"><strong>會員制度</strong> — VIP享專屬權限與競標保障</div>
+    </div>
+  </div>
+
+  <div>
+    <span class="cta">立即加入測試</span>
+  </div>
+
+  <div class="footer">
+    暗標競標會 · 測試版<br>
+    <span class="footer-tag">名額有限·即刻報名</span>
+  </div>
+
+</div>
+
+</body>
+</html>
+`;
+
+export default function PromoScreen() {
+  return (
+    <View style={styles.container}>
+      <WebView
+        source={{ html: PROMO_HTML }}
+        style={styles.webview}
+        scrollEnabled
+        bounces
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0a0e17',
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+});
