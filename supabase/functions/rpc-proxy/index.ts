@@ -196,7 +196,11 @@ Deno.serve(async (req: Request) => {
       // Only messages the application raised on purpose (RAISE EXCEPTION -> P0001)
       // are user-facing. Every other Postgres error (constraint names, missing
       // columns, permission denials) leaks internal detail, so it is replaced.
-      const isAppMessage = error.code === "P0001" && !!error.message;
+      // In some Supabase SDK versions the `code` field is missing, so we also
+      // check whether the message contains CJK characters, which all our
+      // RAISE EXCEPTION messages do and internal Postgres messages do not.
+      const isAppMessage = !!error.message &&
+        (error.code === "P0001" || /[\u4e00-\u9fff]/.test(error.message));
       const safeMsg = isAppMessage ? error.message : "操作失敗，請稍後再試";
       return new Response(
         JSON.stringify({ data: null, error: { message: safeMsg } }),
