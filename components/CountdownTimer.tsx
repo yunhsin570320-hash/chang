@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Text, StyleSheet } from 'react-native';
 
 interface CountdownTimerProps {
@@ -11,19 +11,23 @@ interface CountdownTimerProps {
 export function CountdownTimer({ endTime, onEnd, size = 'medium', isEnded }: CountdownTimerProps) {
   const [ended, setEnded] = useState(isEnded || false);
   const [displayTime, setDisplayTime] = useState({ hours: 0, minutes: 0, seconds: 0 });
+  const onEndRef = useRef(onEnd);
 
   useEffect(() => {
+    onEndRef.current = onEnd;
+  }, [onEnd]);
+
+  useEffect(() => {
+    if (ended || isEnded) return;
+
     const updateTimer = () => {
       const end = new Date(endTime).getTime();
-      const now = Date.now();
-      const diff = Math.max(0, end - now);
+      const diff = Math.max(0, end - Date.now());
 
       if (diff <= 0) {
         setDisplayTime({ hours: 0, minutes: 0, seconds: 0 });
-        if (!ended) {
-          setEnded(true);
-          onEnd?.();
-        }
+        setEnded(true);
+        onEndRef.current?.();
       } else {
         const hours = Math.floor(diff / (1000 * 60 * 60));
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -35,7 +39,7 @@ export function CountdownTimer({ endTime, onEnd, size = 'medium', isEnded }: Cou
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [endTime, ended, onEnd]);
+  }, [endTime, isEnded, ended]);
 
   if (ended || isEnded) {
     return <Text style={[styles.timer, styles[size], styles.ended]}>已結標</Text>;
