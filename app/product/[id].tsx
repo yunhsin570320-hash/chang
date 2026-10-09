@@ -334,7 +334,7 @@ export default function ProductDetail() {
     { key: 'other', label: '其他' },
   ];
 
-  const ReportModal = () => (
+  const reportModalJsx = (
     <Modal visible={reportModal} transparent animationType="slide" onRequestClose={() => setReportModal(false)}>
       <View style={styles.modalOverlay}>
         <View style={styles.reportModalBox}>
@@ -403,11 +403,9 @@ export default function ProductDetail() {
     </Modal>
   );
 
-  const ResultModal = () => {
-    const winner = bids[0];
-    const isWinner = winner?.bidder_id === user?.id;
-
-    return (
+  const resultWinner = bids[0];
+  const resultIsWinner = resultWinner?.bidder_id === user?.id;
+  const resultModalJsx = (
       <Modal
         visible={resultModalVisible}
         transparent
@@ -428,19 +426,19 @@ export default function ProductDetail() {
               <Text style={styles.resultTitle}>開標結果公布</Text>
             </View>
 
-            {winner ? (
+            {resultWinner ? (
               <View style={styles.winnerSection}>
                 <Text style={styles.congratsText}>恭喜</Text>
-                <Text style={styles.winnerNameText}>{winner.bidder?.name}</Text>
+                <Text style={styles.winnerNameText}>{resultWinner.bidder?.name}</Text>
                 <Text style={styles.congratsText}>成功得標！</Text>
 
                 <View style={styles.amountCard}>
                   <Trophy size={24} color="#00D4AA" />
                   <Text style={styles.amountLabel}>得標金額</Text>
-                  <Text style={styles.amountValue}>NT$ {(winner.amount || 0).toLocaleString()}</Text>
+                  <Text style={styles.amountValue}>NT$ {(resultWinner.amount || 0).toLocaleString()}</Text>
                 </View>
 
-                {isWinner && (
+                {resultIsWinner && (
                   <View style={styles.myResultWinner}>
                     <Trophy size={32} color="#FFD700" />
                     <Text style={styles.myResultText}>您是得標者！</Text>
@@ -477,10 +475,9 @@ export default function ProductDetail() {
           </View>
         </View>
       </Modal>
-    );
-  };
+  );
 
-  const EndAuctionModal = () => (
+  const endAuctionModalJsx = (
     <Modal
       visible={endAuctionModalVisible}
       transparent
@@ -557,9 +554,9 @@ export default function ProductDetail() {
 
   return (
     <>
-      <ReportModal />
-      <ResultModal />
-      <EndAuctionModal />
+      {reportModalJsx}
+      {resultModalJsx}
+      {endAuctionModalJsx}
 
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         <View style={styles.imageContainer}>
