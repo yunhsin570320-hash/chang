@@ -133,6 +133,7 @@ export default function AdminPage() {
   const [selectedAction, setSelectedAction] = useState('');
   const [actionReason, setActionReason] = useState('');
   const [actioning, setActioning] = useState(false);
+  const [grantingSeller, setGrantingSeller] = useState(false);
 
   const fetchStats = useCallback(async () => {
     if (!user || !isAdmin || !sessionToken) return;
@@ -259,6 +260,27 @@ export default function AdminPage() {
       console.error(e);
     } finally {
       setActioning(false);
+    }
+  };
+
+  const handleGrantSeller = async (userId: string, userName: string) => {
+    if (!sessionToken) return;
+    setGrantingSeller(true);
+    try {
+      const { data, error } = await callRpc<{ success: boolean; error?: string }>('rpc_admin_grant_seller_role', {
+        p_token: sessionToken,
+        p_user_id: userId,
+      });
+      if (error || data?.error) {
+        Alert.alert('操作失敗', data?.error || '請稍後再試');
+        return;
+      }
+      Alert.alert('已授予賣家身份', `${userName} 現在擁有賣家身份，可切換至賣家模式上架商品。`);
+      fetchTabData(activeTab);
+    } catch {
+      Alert.alert('操作失敗', '請稍後再試');
+    } finally {
+      setGrantingSeller(false);
     }
   };
 
@@ -437,9 +459,21 @@ export default function AdminPage() {
               )}
             </View>
             {!m.is_admin && (
-              <TouchableOpacity style={styles.actionBtn} onPress={() => openActionModal('user', m.id, m.name)}>
-                <Text style={styles.actionBtnText}>管理</Text>
-              </TouchableOpacity>
+              <View style={styles.memberActions}>
+                {!m.is_seller && (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { borderColor: 'rgba(255,215,0,0.3)', backgroundColor: 'rgba(255,215,0,0.08)' }]}
+                    onPress={() => handleGrantSeller(m.id, m.name)}
+                    disabled={grantingSeller}
+                  >
+                    <Crown size={14} color="#FFD700" />
+                    <Text style={[styles.actionBtnText, { color: '#FFD700' }]}>加賣家</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.actionBtn} onPress={() => openActionModal('user', m.id, m.name)}>
+                  <Text style={styles.actionBtnText}>管理</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         )}
@@ -1268,6 +1302,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
   },
   memberInfo: { flex: 1 },
+  memberActions: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
   memberNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' },
   memberName: { color: '#fff', fontSize: 15, fontWeight: '700' },
   blockedBadge: { backgroundColor: 'rgba(255,107,107,0.2)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },

@@ -187,6 +187,8 @@ export default function TabLayout() {
         options={{
           title: '賣家後台',
           tabBarIcon: ({ size, color }) => <Store size={size} color={color} />,
+          href: (user?.is_seller || isAdmin) ? undefined : null,
+          tabBarItemStyle: (user?.is_seller || isAdmin) ? undefined : { display: 'none' },
         }}
       />
       <Tabs.Screen
