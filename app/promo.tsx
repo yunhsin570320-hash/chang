@@ -92,7 +92,7 @@ function AnimatedBackground() {
       {STARS.map((s, i) => (
         <View
           key={i}
-          style={[styles.star, { left: s.x, top: s.y, width: s.size, height: s.size, opacity: s.opacity }]}
+          style={[styles.star, { left: s.x as `${number}%`, top: s.y as `${number}%`, width: s.size, height: s.size, opacity: s.opacity }]}
         />
       ))}
     </View>
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   bgBase: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#0a0e17',
   },
   bgGlow: {
