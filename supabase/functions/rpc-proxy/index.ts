@@ -139,6 +139,7 @@ const ALLOWED_FUNCTIONS = new Set([
   "rpc_get_conversations",
   "rpc_get_conversation_messages",
   "rpc_get_unread_message_count",
+  "rpc_admin_grant_seller_role",
 ]);
 
 Deno.serve(async (req: Request) => {
